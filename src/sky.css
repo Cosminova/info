@@ -1,0 +1,239 @@
+/*
+ * Planetarium styles.
+ *
+ * Everything shared with the universe explorer — tokens, panels, buttons,
+ * fields, the rail, dialogs, the immersive mode, the loading cover — lives in
+ * ui/theme.css. What is left here is the part that is genuinely specific to
+ * standing on the ground and looking up: the sky canvas, the star and
+ * constellation labels drawn over it, and the few layout details that differ
+ * because this view has a horizon.
+ *
+ * sky.html links ui/theme.css before this file — as a second <link> rather than
+ * an @import here, so the two stylesheets download in parallel.
+ */
+
+#sky {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+}
+
+/* ------------------------------------------------------------------- labels */
+
+/*
+ * Sky labels are their own thing rather than the explorer's label layer: there
+ * are far more of them, they are ranked by magnitude rather than by distance,
+ * and the classes carry meaning an observer reads at a glance — planets warm,
+ * constellations wide-tracked and dim, deep-sky objects violet. Sizes are in
+ * fixed pixels on purpose. These sit visually inside the starfield, and scaling
+ * them with the interface would make a dense field unreadable.
+ */
+
+#labels {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  overflow: hidden;
+  transition: opacity var(--t-mid) var(--ease);
+}
+
+.sky-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: rgba(214, 228, 246, 0.82);
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.9);
+  will-change: transform;
+}
+
+.sky-label.star {
+  color: rgba(230, 240, 255, 0.95);
+}
+
+.sky-label.star-dim {
+  font-size: 10px;
+  color: rgba(196, 212, 234, 0.6);
+}
+
+.sky-label.bayer {
+  font-size: 10px;
+  font-style: italic;
+  color: rgba(170, 192, 220, 0.5);
+}
+
+.sky-label.planet {
+  font-size: 12px;
+  color: #ffe6b8;
+}
+
+.sky-label.constellation {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: rgba(140, 178, 220, 0.5);
+  text-transform: uppercase;
+  transform-origin: left center;
+}
+
+.sky-label.asterism {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: rgba(150, 210, 190, 0.55);
+  text-transform: uppercase;
+}
+
+.sky-label.dso {
+  font-size: 10px;
+  color: rgba(190, 170, 230, 0.72);
+}
+
+.sky-label.cardinal {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  color: rgba(190, 214, 240, 0.75);
+}
+
+/* The selection ring, drawn around whatever was picked. Unlike the explorer's
+   hover bracket this one persists, because in a telescopic field it is often the
+   only way to tell which faint point is the one being tracked. */
+#reticle {
+  position: fixed;
+  width: 34px;
+  height: 34px;
+  margin: -17px 0 0 -17px;
+  border: 1px solid var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 12px var(--accent-glow);
+  z-index: 11;
+  pointer-events: none;
+  transition: opacity var(--t-fast) var(--ease);
+}
+
+/* ------------------------------------------------------------------ readouts */
+
+/* Two columns of short key-value pairs: right ascension, declination, altitude,
+   azimuth and the field of view. Tabular figures, so the digits do not shift
+   sideways as the numbers tick over — which they do continuously here. */
+.readout-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-1) var(--sp-3);
+}
+
+.readout-grid .v {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------- options */
+
+/* Latitude and longitude: a label with the number field on the same line, since
+   both are short and a stacked layout would make the panel needlessly tall. */
+.fields {
+  display: grid;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-2);
+}
+
+.field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  font-size: var(--fs-small);
+  color: var(--ink-2);
+}
+
+.field-row .input {
+  width: calc(88px * var(--ui-scale));
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------------- zoom */
+
+/* A vertical field-of-view control at the right edge of the centre region, clear
+   of the panels above and below it. Vertical because the thing it changes is an
+   angle subtended top to bottom, and because a horizontal slider here would lie
+   across the view. */
+.zoombar {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+
+.zoombar input[type='range'] {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 4px;
+  height: calc(120px * var(--ui-scale));
+}
+
+/* ------------------------------------------------------------------ help */
+
+/* The explorer builds its dialogs from the toolkit; this one is in the markup
+   because its text is long-form prose, so it gets the backdrop treatment here.
+   Clicking the backdrop closes it, which main.js handles. */
+#help {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--edge);
+  background: rgba(2, 4, 9, 0.62);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  animation: help-in var(--t-mid) var(--ease);
+}
+
+@keyframes help-in {
+  from { opacity: 0; }
+}
+
+.help-inner {
+  position: static;
+  width: min(calc(860px * var(--ui-scale)), 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---------------------------------------------------------------- immersive */
+
+/* The labels and the selection ring are part of the picture in a way the panels
+   are not, but a clean screenshot means all of it goes. */
+body.immersive #labels,
+body.immersive #reticle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------------------------------------------------------------- responsive */
+
+@media (max-width: 900px) {
+  /* Coordinates are the first thing to go: the selection panel repeats the
+     useful part of them, and the horizon matters more than the numbers. */
+  #readout-panel {
+    display: none;
+  }
+}

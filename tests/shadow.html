@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>shadow maths probe</title>
+  </head>
+  <body>
+    <!--
+      Harness for the sunlight visibility functions in src/engine/shadow-glsl.js.
+
+      These functions decide whether anything in the simulation is in shadow, so
+      they are worth testing directly rather than only through what a rendered
+      frame happens to look like. The catch is that they are GLSL: the only way to
+      test the code that actually ships is to run it on the GPU.
+
+      So this page compiles the real SHADOW_GLSL source into a fragment shader
+      that evaluates one case per pixel, renders it, and reads the answers back.
+      scripts/light-check.mjs supplies the cases and compares the results against
+      values worked out independently on the CPU.
+
+      The results come back through an ordinary 8-bit render target, with each
+      float packed across three channels as fixed point. That is about seven
+      decimal digits, which is far more than these functions need, and it avoids
+      depending on float render target support in whatever software renderer the
+      test happens to run under.
+    -->
+    <script type="module">
+      import {
+        DataTexture,
+        FloatType,
+        Mesh,
+        NearestFilter,
+        OrthographicCamera,
+        PlaneGeometry,
+        RGBAFormat,
+        Scene,
+        ShaderMaterial,
+        WebGLRenderer,
+        WebGLRenderTarget,
+      } from 'three';
+
+      import { SHADOW_GLSL } from '/src/engine/shadow-glsl.js';
+
+      const FRAGMENT = /* glsl */ `
+        precision highp float;
+
+        #define PI 3.141592653589793
+
+        uniform sampler2D uCases;
+        uniform float uCount;
+        uniform int uFunction;
+
+        ${SHADOW_GLSL}
+
+        // Fixed point across three channels, most significant first.
+        vec3 pack(float value) {
+          float v = clamp(value, 0.0, 1.0) * 16777215.0;
+          float r = floor(v / 65536.0);
+          float g = floor((v - r * 65536.0) / 256.0);
+          float b = floor(v - r * 65536.0 - g * 256.0);
+          return vec3(r, g, b) / 255.0;
+        }
+
+        void main() {
+          float index = floor(gl_FragCoord.x);
+          vec4 args = texture2D(uCases, vec2((index + 0.5) / uCount, 0.5));
+
+          float result = 0.0;
+          if (uFunction == 0) {
+            result = sunAboveHorizon(args.x, args.y);
+          } else if (uFunction == 1) {
+            result = sunCoveredByDisc(args.x, args.y, args.z);
+          } else if (uFunction == 2) {
+            result = slabTransmission(args.x, args.y);
+          }
+
+          gl_FragColor = vec4(pack(result), 1.0);
+        }
+      `;
+
+      const renderer = new WebGLRenderer({ antialias: false });
+      const scene = new Scene();
+      const camera = new OrthographicCamera(-1, 1, 1, -1, 0, 1);
+
+      const material = new ShaderMaterial({
+        uniforms: {
+          uCases: { value: null },
+          uCount: { value: 1 },
+          uFunction: { value: 0 },
+        },
+        fragmentShader: FRAGMENT,
+        vertexShader: 'void main() { gl_Position = vec4(position.xy * 2.0, 0.0, 1.0); }',
+      });
+      scene.add(new Mesh(new PlaneGeometry(1, 1), material));
+
+      /**
+       * Arguments arrive as plain numbers and go to the GPU as a one-pixel-per-case
+       * float texture, so the shader reads each case exactly as given rather than
+       * through an 8-bit quantisation of it.
+       */
+      window.evaluate = (fn, cases) => {
+        const count = cases.length;
+        const data = new Float32Array(count * 4);
+        cases.forEach((args, i) => {
+          data[i * 4 + 0] = args[0] ?? 0;
+          data[i * 4 + 1] = args[1] ?? 0;
+          data[i * 4 + 2] = args[2] ?? 0;
+          data[i * 4 + 3] = args[3] ?? 0;
+        });
+
+        const texture = new DataTexture(data, count, 1, RGBAFormat, FloatType);
+        texture.minFilter = NearestFilter;
+        texture.magFilter = NearestFilter;
+        texture.needsUpdate = true;
+
+        const target = new WebGLRenderTarget(count, 1);
+        material.uniforms.uCases.value = texture;
+        material.uniforms.uCount.value = count;
+        material.uniforms.uFunction.value = { sunAboveHorizon: 0, sunCoveredByDisc: 1, slabTransmission: 2 }[fn];
+
+        renderer.setRenderTarget(target);
+        renderer.setSize(count, 1, false);
+        renderer.render(scene, camera);
+
+        const pixels = new Uint8Array(count * 4);
+        renderer.readRenderTargetPixels(target, 0, 0, count, 1, pixels);
+        renderer.setRenderTarget(null);
+        target.dispose();
+        texture.dispose();
+
+        return Array.from({ length: count }, (_, i) => {
+          const r = pixels[i * 4 + 0];
+          const g = pixels[i * 4 + 1];
+          const b = pixels[i * 4 + 2];
+          return (r * 65536 + g * 256 + b) / 16777215;
+        });
+      };
+
+      window.shadowProbeReady = true;
+    </script>
+  </body>
+</html>

@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Cosminova — the sky from where you stand</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="src/ui/theme.css" />
+    <link rel="stylesheet" href="src/sky.css" />
+  </head>
+  <body>
+    <canvas id="sky"></canvas>
+    <div id="labels"></div>
+    <div id="reticle" hidden></div>
+
+    <div id="loading">
+      <div class="loading-inner">
+        <div class="loading-title">COSMINOVA</div>
+        <div class="loading-bar"><div id="loading-fill"></div></div>
+        <div id="loading-status" class="loading-sub">starting…</div>
+      </div>
+    </div>
+
+    <!--
+      Same region layout as the explorer: pointer-transparent edge regions with an
+      empty centre. The element ids are the contract main.js binds to, so they are
+      written out here rather than generated; src/ui/sky-ui.js adds the navigation
+      rail, panel collapsing, immersive mode and the shortcut table on top.
+    -->
+    <div class="ui-layer">
+      <div class="region-top">
+        <div class="topbar">
+          <button type="button" id="rail-toggle" class="btn is-icon is-quiet" aria-label="Expand navigation">☰</button>
+
+          <div class="brand">
+            <span class="brand-name">COSMINOVA</span>
+            <!-- main.js writes the whole phrase here when the mode changes. -->
+            <span class="brand-sub" id="mode-label">from the ground</span>
+          </div>
+
+          <div id="search" class="search takes-pointer">
+            <input
+              id="search-input"
+              class="input search-input"
+              type="search"
+              placeholder="Find a star, constellation, planet or nebula"
+              autocomplete="off"
+              spellcheck="false"
+            />
+            <ul id="search-results" class="search-results takes-pointer" hidden></ul>
+          </div>
+
+          <div class="topbar-spacer"></div>
+
+          <div id="mode-toggle" class="segmented takes-pointer">
+            <button type="button" data-mode="ground" class="active">Ground</button>
+            <button type="button" data-mode="space">Free space</button>
+          </div>
+
+          <div id="time" class="timebar takes-pointer">
+            <button type="button" id="btn-play" class="btn is-icon" data-tip="Play or pause">▮▮</button>
+            <div id="rates">
+              <button type="button" class="btn time-step" data-rate="-3600" data-tip="Rewind">◀◀</button>
+              <button type="button" class="btn time-step" data-rate="-1" data-tip="Reverse realtime">◀</button>
+              <button type="button" class="btn time-step" data-rate="1" data-tip="Realtime">▶</button>
+              <button type="button" class="btn time-step" data-rate="3600" data-tip="Fast forward">▶▶</button>
+            </div>
+            <span id="rate-label" class="time-rate">realtime</span>
+            <span class="rule"></span>
+            <input id="time-input" class="input" type="datetime-local" step="1" />
+            <button type="button" id="btn-now" class="btn" data-tip="Jump to now">now</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="region-left">
+        <div id="rail" class="rail panel takes-pointer"></div>
+
+        <div class="dock">
+          <!--
+            One options panel, sectioned. main.js toggles `#panel.hidden` from
+            `#btn-panel`, and sky-ui.js drives the same element from the rail, so
+            the two agree on what "open" means.
+          -->
+          <aside id="panel" class="panel panel-dock" data-panel="options" hidden>
+            <div class="panel-head takes-pointer">
+              <span class="panel-caret" aria-hidden="true"></span>
+              <span class="panel-title">Options</span>
+            </div>
+            <div class="panel-collapse">
+              <div class="panel-body scroll">
+                <div class="section-title">Where you are</div>
+                <div class="fields">
+                  <label class="field-row">Latitude<input id="latitude" class="input" type="number" min="-90" max="90" step="0.01" value="37.77" /></label>
+                  <label class="field-row">Longitude<input id="longitude" class="input" type="number" min="-180" max="180" step="0.01" value="-122.42" /></label>
+                </div>
+                <button type="button" id="btn-locate" class="btn">Use my location</button>
+
+                <div class="section">
+                  <div class="section-title">Sight</div>
+                  <label class="field">
+                    <span class="field-label">Exposure</span>
+                    <output id="val-exposure" class="field-value">0.0</output>
+                    <input id="opt-exposure" type="range" min="-4" max="6" step="0.1" value="0" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Light pollution</span>
+                    <output id="val-pollution" class="field-value">0.05</output>
+                    <input id="opt-pollution" type="range" min="0" max="1" step="0.01" value="0.05" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Milky Way</span>
+                    <output id="val-milkyway" class="field-value">0.55</output>
+                    <input id="opt-mwintensity" type="range" min="0" max="1.5" step="0.01" value="0.55" />
+                  </label>
+                  <label class="field">
+                    <span class="field-label">Star size</span>
+                    <output id="val-starsize" class="field-value">2.5</output>
+                    <input id="opt-starsize" type="range" min="1" max="6" step="0.1" value="2.5" />
+                  </label>
+                  <label class="check"><input id="opt-twinkle" type="checkbox" /><span>Twinkle</span></label>
+                  <label class="check"><input id="opt-bloom" type="checkbox" /><span>Bloom</span></label>
+                  <label class="check"><input id="opt-spikes" type="checkbox" /><span>Diffraction spikes</span></label>
+                  <label class="check"><input id="opt-faint" type="checkbox" /><span>Faint stars</span></label>
+                  <label class="check"><input id="opt-music" type="checkbox" checked /><span>Music</span></label>
+                </div>
+
+                <div class="section">
+                  <div class="section-title">Sky</div>
+                  <label class="check"><input id="opt-horizon" type="checkbox" /><span>Horizon and ground</span></label>
+                  <label class="check"><input id="opt-milkyway" type="checkbox" /><span>Milky Way</span></label>
+                  <label class="check"><input id="opt-planets" type="checkbox" /><span>Sun, Moon and planets</span></label>
+                  <label class="check"><input id="opt-dso" type="checkbox" /><span>Deep sky objects</span></label>
+                  <label class="check"><input id="opt-dsolabels" type="checkbox" /><span>Deep sky labels</span></label>
+                  <label class="check"><input id="opt-clusters" type="checkbox" /><span>Cluster markers</span></label>
+                </div>
+
+                <div class="section">
+                  <div class="section-title">Figures and lines</div>
+                  <label class="check"><input id="opt-constellations" type="checkbox" /><span>Constellation figures</span></label>
+                  <label class="check"><input id="opt-conlabels" type="checkbox" /><span>Constellation names</span></label>
+                  <label class="check"><input id="opt-bounds" type="checkbox" /><span>Constellation borders</span></label>
+                  <label class="check"><input id="opt-asterisms" type="checkbox" /><span>Asterisms</span></label>
+                  <label class="check"><input id="opt-starnames" type="checkbox" /><span>Star names</span></label>
+                  <label class="check"><input id="opt-grid" type="checkbox" /><span>Equatorial grid</span></label>
+                  <label class="check"><input id="opt-azgrid" type="checkbox" /><span>Alt-azimuth grid</span></label>
+                  <label class="check"><input id="opt-ecliptic" type="checkbox" /><span>Ecliptic</span></label>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <div class="region-center">
+        <div id="ui-reticle" class="reticle"></div>
+        <div id="zoom" class="zoombar takes-pointer">
+          <button type="button" id="btn-zoom-out" class="btn is-icon" data-tip="Wider field">−</button>
+          <input id="zoom-slider" type="range" min="0" max="1000" step="1" value="0" aria-label="Zoom" />
+          <button type="button" id="btn-zoom-in" class="btn is-icon" data-tip="Narrower field">+</button>
+        </div>
+      </div>
+
+      <div class="region-right">
+        <div class="dock">
+          <!-- main.js shows and hides this by id; the inner markup is its contract. -->
+          <aside id="selection" class="panel panel-dock" data-panel="selection" hidden>
+            <div class="panel-head takes-pointer">
+              <span class="panel-caret" aria-hidden="true"></span>
+              <span class="panel-title">Selection</span>
+              <button type="button" id="selection-close" class="btn is-icon is-quiet" aria-label="Close">×</button>
+            </div>
+            <div class="panel-collapse">
+              <div class="panel-body scroll">
+                <div class="obj-head">
+                  <h2 id="selection-title" class="obj-name">—</h2>
+                  <p id="selection-subtitle" class="obj-class">—</p>
+                </div>
+                <dl id="selection-facts" class="kv"></dl>
+                <div class="obj-actions">
+                  <button type="button" id="selection-goto" class="btn">Centre and zoom</button>
+                </div>
+              </div>
+            </div>
+          </aside>
+
+          <aside id="readout-panel" class="panel panel-dock" data-panel="readout">
+            <div class="panel-head takes-pointer">
+              <span class="panel-caret" aria-hidden="true"></span>
+              <span class="panel-title">Coordinates</span>
+            </div>
+            <div class="panel-collapse">
+              <div class="panel-body">
+                <div id="readout" class="readout-grid">
+                  <div class="readout"><span class="k">RA</span><span class="v" id="out-ra">—</span></div>
+                  <div class="readout"><span class="k">Dec</span><span class="v" id="out-dec">—</span></div>
+                  <div class="readout"><span class="k">Alt</span><span class="v" id="out-alt">—</span></div>
+                  <div class="readout"><span class="k">Az</span><span class="v" id="out-az">—</span></div>
+                  <div class="readout"><span class="k">Field</span><span class="v" id="out-fov">—</span></div>
+                  <div class="readout"><span class="k">Limit</span><span class="v" id="out-limit">—</span></div>
+                  <div class="readout"><span class="k">Stars</span><span class="v" id="out-count">—</span></div>
+                  <div class="readout"><span class="k">FPS</span><span class="v" id="out-fps">—</span></div>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+
+      <div class="region-bottom">
+        <div class="bottom-left">
+          <a id="link-solar" class="btn" href="index.html" data-tip="Explore the solar system in 3D">Solar system →</a>
+        </div>
+        <div class="bottom-right">
+          <button type="button" id="btn-panel" class="btn" data-tip="Display options">Options</button>
+          <button type="button" id="btn-immersive" class="btn">Immersive</button>
+          <button type="button" id="btn-help" class="btn is-icon" aria-label="Help">?</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Full-screen backdrop: main.js closes this when the backdrop itself is clicked. -->
+    <div id="help" hidden>
+      <div class="help-inner dialog">
+        <div class="dialog-head">
+          <h2>Cosminova — the sky from where you stand</h2>
+          <button type="button" id="help-close" class="btn is-icon is-quiet" aria-label="Close">×</button>
+        </div>
+        <div class="dialog-body scroll">
+          <div class="help-grid">
+            <div>
+              <div class="section-title">Looking around</div>
+              <p class="prose">
+                <b>Drag</b> to turn your head; <b>scroll</b> or <b>pinch</b> to zoom, from a 110°
+                naked-eye view down to seven arcseconds — fifty thousand times, enough to put three
+                kilometres of lunar surface across the screen.
+              </p>
+              <p class="prose">
+                <b>Click</b> anything to lock onto it. The view then holds it centred against the
+                sky's rotation, so you can keep scrolling in until a planet becomes a world.
+                <b>Search</b> by proper name, Bayer letter, Messier or NGC number, constellation or
+                planet.
+              </p>
+              <div class="section-title">What you are looking at</div>
+              <p class="prose">
+                This is the real sky for the date, time and place in the options panel. Star
+                positions and magnitudes come from the HYG catalogue; the Sun, Moon and planets are
+                computed from Keplerian elements with the ELP2000 lunar series, so the Moon shows the
+                correct phase and libration.
+              </p>
+              <p class="prose">
+                In ground view the sky is rotated into your local horizon frame, the atmosphere
+                scatters sunlight into a physically shaped twilight, and the visibility limit tracks
+                sky brightness — moonlight and light pollution wash out faint stars the way they do
+                outdoors. Switch to free space to lift the horizon away and see the whole celestial
+                sphere.
+              </p>
+              <p class="prose is-credits">
+                Star catalogue: HYG v4.1 (Hipparcos, Yale BSC, Gliese). Deep sky: OpenNGC. Milky Way
+                panorama: ESO/S. Brunier. Planet imagery: Solar System Scope (CC BY 4.0), NASA/JPL.
+              </p>
+            </div>
+            <div>
+              <div class="section-title">Keyboard — click a key to rebind</div>
+              <div id="help-keys" class="help-keys"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="src/main.js"></script>
+  </body>
+</html>

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Keeps the viewer served at http://localhost:5173 without anyone having to
+  start it. Install with:
+
+    cp scripts/host-agent.plist ~/Library/LaunchAgents/com.skyview.dev.plist
+    launchctl load -w ~/Library/LaunchAgents/com.skyview.dev.plist
+
+  KeepAlive brings it back if it crashes or if the machine restarts, and
+  RunAtLoad starts it at login.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.skyview.dev</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/zsh</string>
+    <string>-lc</string>
+    <string>cd /Users/grantsu/Drop/skyview &amp;&amp; npm run dev -- --port 5173 --strictPort --host</string>
+  </array>
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <key>StandardOutPath</key>
+  <string>/tmp/skyview-dev.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/skyview-dev.log</string>
+</dict>
+</plist>

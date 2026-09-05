@@ -1,0 +1,10 @@
+import puppeteer from 'puppeteer-core';
+const b = await puppeteer.launch({ executablePath: '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true, args: ['--headless=new','--no-sandbox','--use-gl=angle'], defaultViewport: { width: 1200, height: 800 } });
+const p = await b.newPage();
+p.on('pageerror', (e) => console.log('PAGEERROR:', e.message));
+p.on('console', (m) => { if (m.type()==='error'||m.type()==='warning') console.log(m.type().toUpperCase()+':', m.text().slice(0,300)); });
+p.on('requestfailed', (r) => console.log('REQFAIL:', r.url().slice(0,120), r.failure()?.errorText));
+await p.goto('http://127.0.0.1:5180/index.html', { waitUntil: 'networkidle2', timeout: 60000 }).catch(e=>console.log('nav', e.message));
+await new Promise(r=>setTimeout(r,4000));
+console.log('ready =', await p.evaluate(()=>window.cosminova?.ready));
+await b.close();

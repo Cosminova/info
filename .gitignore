@@ -1,0 +1,29 @@
+node_modules/
+dist/
+.DS_Store
+
+# Anchored to the root on purpose. Unanchored, this also swallows
+# site/assets/shots — the landing page's gallery — which is committed.
+/shots/
+
+# Assembled by `node scripts/build-site.mjs` from site/ and dist/, and built
+# again by the Pages workflow on every deploy.
+_site/
+# Windows installers from `npm run dist:win`. The released ones are attached to
+# a GitHub release by the workflow, not kept here.
+release/
+
+# Renders written by `node scripts/audition.mjs` so the score can be listened to
+# outside the browser. Regenerated on demand; the music itself is code.
+audio-check/
+# Frames pulled from reference video by `node scripts/video-frames.mjs`, kept
+# locally for comparison rather than committed.
+reference/
+
+# Finished videos and the frame sequences they were encoded from, written by
+# `npm run render:video`. The shot is code, so these are reproducible output.
+video/
+
+# Raw catalogues (~60 MB) are inputs to `npm run build:data`; the committed
+# assets under public/data and public/textures are what the app actually loads.
+data-src/

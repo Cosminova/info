@@ -1,0 +1,67 @@
+name: Windows build
+
+# The installer has to be built on Windows. electron-builder can cross-build a
+# lot of things, but an NSIS installer is not one of them without wine in the
+# picture, and a real Windows runner is both simpler and closer to what the
+# people downloading it will run.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      # npm ci rather than npm install so the build uses the resolved tree in
+      # package-lock.json and cannot drift between runs.
+      - name: Install
+        run: npm ci
+
+      # electron-builder packages dist/, so the renderer has to exist first.
+      - name: Build the renderer
+        run: npm run build
+
+      - name: Package the installer
+        run: npx --no-install electron-builder --win --publish never
+
+      # Kept regardless of how the run was triggered, so a manual run is still
+      # useful for testing without cutting a release.
+      - name: Upload the installer as an artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cosminova-windows-installer
+          path: release/*.exe
+          if-no-files-found: error
+
+      # Only tag pushes produce a release. The site's download button points at
+      # /releases/latest, so this is what makes that link resolve.
+      - name: Attach the installer to the release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          # A release may already exist for the tag if this is a re-run, in
+          # which case the installer is uploaded into it rather than failing.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" release/*.exe --clobber
+          else
+            gh release create "$TAG" release/*.exe \
+              --title "Cosminova $TAG" \
+              --notes "Windows installer, 64-bit. Not code-signed yet, so SmartScreen will warn once: choose More info, then Run anyway."
+          fi

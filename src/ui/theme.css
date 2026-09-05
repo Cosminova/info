@@ -1,0 +1,1545 @@
+/**
+ * Cosminova design system.
+ *
+ * The whole interface is an instrument sitting on top of the view, so every
+ * decision here is in service of one rule: the universe is the subject and the
+ * chrome is not. Panels are translucent and thin-bordered, type is small,
+ * controls are compact, and nothing occupies the middle of the screen.
+ *
+ * Everything is expressed against the custom properties below so the user can
+ * rescale, retint and change the opacity of the entire interface at runtime
+ * without a stylesheet knowing about it.
+ */
+
+:root {
+  /* Set at runtime from saved preferences; see ui/prefs.js. */
+  --ui-scale: 1;
+  --ui-alpha: 0.72;
+  --ui-accent-h: 199;
+  --ui-accent-s: 100%;
+  --ui-accent-l: 72%;
+
+  --accent: hsl(var(--ui-accent-h) var(--ui-accent-s) var(--ui-accent-l));
+  --accent-dim: hsl(var(--ui-accent-h) 60% 62%);
+  /* Text laid over a filled accent surface. Dark, because the accent is always
+     a light tint — a light-on-light pairing is the usual way an accent colour
+     picker produces something unreadable. */
+  --accent-ink: hsl(var(--ui-accent-h) 90% 8%);
+  --accent-glow: hsl(var(--ui-accent-h) var(--ui-accent-s) var(--ui-accent-l) / 0.22);
+
+  --void: #04050a;
+  --ink: #e8eef7;
+  --ink-2: #b9c5d6;
+  --dim: #8492a6;
+  --dim-2: #5d6a7d;
+
+  /* Three panel depths. Rails and bars sit closest to the view and are the most
+     transparent; dialogues that need to be read sit furthest and are nearly
+     opaque, because text over a moving starfield is unreadable otherwise. */
+  --surface-1: rgba(9, 13, 21, calc(var(--ui-alpha) * 0.82));
+  --surface-2: rgba(10, 15, 24, var(--ui-alpha));
+  --surface-3: rgba(7, 10, 17, calc(0.62 + var(--ui-alpha) * 0.36));
+  --surface-hover: rgba(120, 165, 215, 0.09);
+  --surface-active: rgba(120, 165, 215, 0.14);
+
+  --line: rgba(140, 175, 215, 0.14);
+  --line-2: rgba(140, 175, 215, 0.26);
+
+  --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Inter, sans-serif;
+
+  /* Type scale, all derived from --ui-scale so one slider moves the interface
+     coherently instead of resizing panels and leaving the text behind. */
+  --fs-micro: calc(9px * var(--ui-scale));
+  --fs-tiny: calc(10px * var(--ui-scale));
+  --fs-small: calc(11px * var(--ui-scale));
+  --fs-body: calc(12px * var(--ui-scale));
+  --fs-large: calc(14px * var(--ui-scale));
+  --fs-title: calc(17px * var(--ui-scale));
+
+  --sp-1: calc(3px * var(--ui-scale));
+  --sp-2: calc(6px * var(--ui-scale));
+  --sp-3: calc(9px * var(--ui-scale));
+  --sp-4: calc(12px * var(--ui-scale));
+  --sp-5: calc(16px * var(--ui-scale));
+  --sp-6: calc(22px * var(--ui-scale));
+
+  --r-1: 4px;
+  --r-2: 7px;
+  --r-3: 10px;
+
+  --blur: blur(14px) saturate(1.1);
+  --edge: calc(12px * var(--ui-scale));
+  --rail-w: calc(42px * var(--ui-scale));
+  --rail-w-open: calc(178px * var(--ui-scale));
+
+  /* One easing for everything that moves. Slightly overshoot-free and quick
+     enough that the interface never feels like it is animating at you. */
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --t-fast: 130ms;
+  --t-mid: 200ms;
+  --t-slow: 320ms;
+}
+
+/* Honour the system setting rather than animating regardless. */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --t-fast: 0ms;
+    --t-mid: 0ms;
+    --t-slow: 0ms;
+  }
+}
+
+/* Set for one frame when the interface has to reach a state immediately, e.g. a
+   capture script hiding it. Zeroing the durations rather than removing the
+   transitions keeps every rule below written the one way. */
+body.no-ui-anim,
+body.no-ui-anim * {
+  --t-fast: 0ms;
+  --t-mid: 0ms;
+  --t-slow: 0ms;
+  transition: none !important;
+  animation: none !important;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: var(--void);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--fs-body);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* Numbers are read by eye against each other constantly — distances ticking
+   down, coordinates changing — so they are tabular everywhere. Without this,
+   digits of different widths make a readout jitter as it counts. */
+.num,
+.mono {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+::selection {
+  background: var(--accent-glow);
+}
+
+/* ---------------------------------------------------------------- scrollbars */
+
+.scroll {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+  overscroll-behavior: contain;
+}
+
+.scroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+.scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(160, 195, 235, 0.4);
+  background-clip: content-box;
+}
+
+/* -------------------------------------------------------------------- layout */
+
+/* The interface is a grid of edge regions with a hole in the middle. Regions are
+   pointer-transparent and only their children take events, so the view can be
+   dragged through the gaps between panels. */
+.ui-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    'top    top     top'
+    'left   center  right'
+    'bottom bottom  bottom';
+}
+
+.ui-layer > * {
+  pointer-events: none;
+}
+
+.ui-layer button,
+.ui-layer input,
+.ui-layer select,
+.ui-layer a,
+.ui-layer .panel,
+.ui-layer .takes-pointer {
+  pointer-events: auto;
+}
+
+.region-top { grid-area: top; display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--edge); }
+.region-left { grid-area: left; display: flex; align-items: center; gap: var(--sp-3); padding: 0 0 0 var(--edge); min-height: 0; }
+/* Panels stack downward beside the rail. `min-height: 0` and the scroll are what
+   keep a tall stack from growing the grid row and pushing the bottom bar off. */
+.region-left > .dock,
+.region-right > .dock { display: flex; flex-direction: column; gap: var(--sp-3); min-height: 0; max-height: 100%; overflow-y: auto; scrollbar-width: none; }
+.region-left > .dock::-webkit-scrollbar,
+.region-right > .dock::-webkit-scrollbar { display: none; }
+.region-right { grid-area: right; display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-3); padding: 0 var(--edge); min-height: 0; overflow: hidden; }
+.region-bottom { grid-area: bottom; display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-3); padding: var(--edge); flex-wrap: wrap; }
+.region-center { grid-area: center; position: relative; }
+
+/* --------------------------------------------------------------------- panel */
+
+.panel {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  /* Deliberately almost no shadow: a drop shadow over a starfield reads as a
+     smudge, and the border plus the blur already separate panel from sky. */
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset;
+  color: var(--ink);
+}
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  cursor: default;
+  user-select: none;
+}
+
+.panel-title {
+  flex: 1;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.panel-body {
+  padding: var(--sp-3);
+}
+
+/* Collapse animates on a grid row rather than max-height, so a panel whose
+   content changes height does not need its animation retuned. */
+.panel-collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows var(--t-mid) var(--ease), opacity var(--t-fast) var(--ease);
+}
+
+.panel-collapse > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel.is-collapsed .panel-collapse {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+/* A zero-height track still cannot be shorter than the body's own padding, so a
+   collapsed panel would keep a few pixels of empty translucent panel below the
+   header. Zeroing the block padding takes it to exactly the header. */
+.panel.is-collapsed .panel-collapse > * {
+  padding-top: 0;
+  padding-bottom: 0;
+  transition: padding var(--t-mid) var(--ease);
+}
+
+.panel.is-collapsed .panel-head {
+  border-bottom-color: transparent;
+}
+
+/* Panels fade and lift slightly rather than sliding a long way; a big slide
+   across the view is exactly the kind of animation that draws the eye off the
+   thing the interface exists to show. */
+.panel.is-entering {
+  animation: panel-in var(--t-mid) var(--ease);
+}
+
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.99); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ------------------------------------------------------------------ controls */
+
+.btn {
+  font: inherit;
+  font-size: var(--fs-small);
+  color: var(--ink-2);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  padding: calc(var(--sp-1) + 1px) var(--sp-3);
+  cursor: pointer;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease),
+    background var(--t-fast) var(--ease);
+}
+
+.btn:hover {
+  color: var(--ink);
+  border-color: var(--line-2);
+  background: var(--surface-hover);
+}
+
+.btn:active {
+  transform: translateY(0.5px);
+}
+
+.btn.is-active {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.btn.is-quiet {
+  background: transparent;
+  border-color: transparent;
+  backdrop-filter: none;
+}
+
+.btn.is-quiet:hover {
+  background: var(--surface-hover);
+}
+
+.btn.is-icon {
+  padding: 0;
+  width: calc(24px * var(--ui-scale));
+  height: calc(24px * var(--ui-scale));
+  justify-content: center;
+}
+
+.btn[disabled] {
+  opacity: 0.38;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* Focus is visible for keyboard users only. A permanent ring on every control
+   would add a great deal of visual noise to a deliberately quiet interface. */
+.ui-layer :focus-visible,
+.dialog :focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.ui-layer :focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* Segmented control: for small sets of mutually exclusive choices, which is
+   most of the modal state in this interface (camera mode, time rate). */
+.segmented {
+  display: inline-flex;
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  overflow: hidden;
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+
+.segmented button {
+  font: inherit;
+  font-size: var(--fs-small);
+  color: var(--dim);
+  background: transparent;
+  border: 0;
+  border-right: 1px solid var(--line);
+  padding: calc(var(--sp-1) + 1px) var(--sp-3);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.segmented button:last-child {
+  border-right: 0;
+}
+
+.segmented button:hover {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+
+.segmented button.is-active {
+  color: var(--accent-ink);
+  background: var(--accent);
+}
+
+/* ------------------------------------------------------------------- sliders */
+
+.field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-small);
+  color: var(--dim);
+  padding: var(--sp-1) 0;
+}
+
+.field > .field-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.field > .field-value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-tiny);
+  color: var(--ink);
+  text-align: right;
+}
+
+.field > input[type='range'] {
+  grid-column: 1 / -1;
+}
+
+/* A field whose control sits beside its label rather than under it, for the
+   segmented buttons that are narrow enough to share the row. */
+.field.is-row {
+  grid-template-columns: 1fr auto;
+}
+
+.quality-readout {
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-tiny);
+  color: var(--dim-2);
+}
+
+input[type='range'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: calc(14px * var(--ui-scale));
+  background: transparent;
+  outline: none;
+  cursor: pointer;
+  margin: 0;
+}
+
+input[type='range']::-webkit-slider-runnable-track {
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(140, 175, 215, 0.22);
+}
+
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: calc(10px * var(--ui-scale));
+  height: calc(10px * var(--ui-scale));
+  margin-top: calc((2px - 10px * var(--ui-scale)) / 2);
+  border-radius: 50%;
+  background: var(--ink);
+  border: 0;
+  transition: background var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease);
+}
+
+input[type='range']:hover::-webkit-slider-thumb,
+input[type='range']:focus-visible::-webkit-slider-thumb {
+  background: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+input[type='range']::-moz-range-track {
+  height: 2px;
+  border-radius: 2px;
+  background: rgba(140, 175, 215, 0.22);
+}
+
+input[type='range']::-moz-range-thumb {
+  width: calc(10px * var(--ui-scale));
+  height: calc(10px * var(--ui-scale));
+  border: 0;
+  border-radius: 50%;
+  background: var(--ink);
+}
+
+input[type='range']:hover::-moz-range-thumb {
+  background: var(--accent);
+}
+
+/* ------------------------------------------------------- checks and switches */
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-small);
+  color: var(--dim);
+  cursor: pointer;
+  padding: var(--sp-1) 0;
+  transition: color var(--t-fast) var(--ease);
+}
+
+.check:hover {
+  color: var(--ink-2);
+}
+
+.check input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: calc(13px * var(--ui-scale));
+  height: calc(13px * var(--ui-scale));
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-1);
+  background: rgba(255, 255, 255, 0.03);
+  cursor: pointer;
+  position: relative;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease);
+}
+
+.check input:checked {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.check input:checked::after {
+  content: '';
+  position: absolute;
+  left: 32%;
+  top: 10%;
+  width: 26%;
+  height: 55%;
+  border: solid var(--accent-ink);
+  border-width: 0 1.6px 1.6px 0;
+  transform: rotate(42deg);
+}
+
+/* --------------------------------------------------------------------- input */
+
+.input {
+  font: inherit;
+  font-size: var(--fs-small);
+  color: var(--ink);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-2);
+  padding: calc(var(--sp-1) + 1px) var(--sp-3);
+  outline: none;
+  min-width: 0;
+  transition: border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.input:focus {
+  border-color: var(--accent);
+  background: rgba(10, 15, 24, 0.9);
+}
+
+.input::placeholder {
+  color: var(--dim-2);
+}
+
+.input[type='search']::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+}
+
+/* Chrome renders the datetime picker's own text nearly black on dark, and the
+   calendar glyph white-on-white; both need forcing. */
+input[type='datetime-local'] {
+  color-scheme: dark;
+}
+
+/* ------------------------------------------------------------- key-value list */
+
+.kv {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-1) var(--sp-4);
+  font-size: var(--fs-small);
+  align-items: baseline;
+}
+
+.kv dt {
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.kv dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+/* A value that is prose rather than a number — a moon list, a morphology class —
+   reads badly right-aligned in a monospace face. */
+.kv dd.is-text {
+  font-family: var(--sans);
+  text-align: left;
+  color: var(--ink-2);
+  line-height: 1.45;
+}
+
+/* ------------------------------------------------------------------ readouts */
+
+.readout {
+  display: grid;
+  gap: 1px;
+}
+
+.readout .k {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.13em;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+
+.readout .v {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-small);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------- tooltip */
+
+.tooltip {
+  position: fixed;
+  z-index: 90;
+  pointer-events: none;
+  background: var(--surface-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  padding: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-tiny);
+  color: var(--ink);
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(2px);
+  transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+
+.tooltip.is-open {
+  opacity: 1;
+  transform: none;
+}
+
+.tooltip kbd {
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--dim);
+  margin-left: var(--sp-2);
+}
+
+/* --------------------------------------------------------------------- menu */
+
+.menu {
+  position: fixed;
+  z-index: 80;
+  min-width: calc(168px * var(--ui-scale));
+  background: var(--surface-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  padding: var(--sp-1);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
+  transform-origin: top left;
+  animation: menu-in var(--t-fast) var(--ease);
+}
+
+@keyframes menu-in {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+
+.menu-head {
+  padding: var(--sp-1) var(--sp-2) var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--sp-1);
+}
+
+.menu-head .t {
+  font-size: var(--fs-small);
+  color: var(--ink);
+}
+
+.menu-head .s {
+  font-size: var(--fs-micro);
+  color: var(--dim);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  font: inherit;
+  font-size: var(--fs-small);
+  color: var(--ink-2);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-1);
+  padding: calc(var(--sp-1) + 1px) var(--sp-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.menu button:hover {
+  background: var(--surface-hover);
+  color: var(--ink);
+}
+
+.menu button .sh {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: var(--fs-micro);
+  color: var(--dim-2);
+}
+
+.menu hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: var(--sp-1) 0;
+}
+
+/* -------------------------------------------------------------------- dialog */
+
+.dialog {
+  position: fixed;
+  z-index: 70;
+  background: var(--surface-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-3);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+  animation: panel-in var(--t-mid) var(--ease);
+  display: flex;
+  flex-direction: column;
+  max-height: min(78vh, calc(100vh - 2 * var(--edge)));
+}
+
+.dialog-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.dialog-head h2 {
+  margin: 0;
+  flex: 1;
+  font-size: var(--fs-micro);
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.dialog-body {
+  padding: var(--sp-4);
+  min-height: 0;
+}
+
+/* Two placements: centred for reference material that wants the width, and
+   tucked under the top bar on the right for settings, which should not cover the
+   view it is changing. */
+.dialog.is-center {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: min(calc(680px * var(--ui-scale)), calc(100vw - 2 * var(--edge)));
+}
+
+.dialog.is-right {
+  right: var(--edge);
+  top: calc(var(--edge) + 44px * var(--ui-scale));
+  width: min(calc(420px * var(--ui-scale)), calc(100vw - 2 * var(--edge)));
+}
+
+/* ------------------------------------------------------------------ top bar */
+
+/* Both views put the same things across the top: a rail toggle, a wordmark, a
+   search field, and a group of controls at the right. */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  min-width: 0;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding-left: var(--sp-1);
+  user-select: none;
+  flex: none;
+}
+
+.brand-name {
+  font-family: var(--mono);
+  font-size: var(--fs-tiny);
+  letter-spacing: 0.34em;
+  color: var(--ink);
+}
+
+.brand-sub {
+  font-size: var(--fs-micro);
+  color: var(--dim-2);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.topbar-spacer {
+  flex: 1;
+  min-width: var(--sp-2);
+}
+
+/* ------------------------------------------------------------------- search */
+
+/* The search field lives in the top bar and grows into an overlay with results
+   below it. Capped in width so it never reaches across the view. */
+.search {
+  position: relative;
+  flex: 0 1 calc(300px * var(--ui-scale));
+  min-width: calc(150px * var(--ui-scale));
+}
+
+.search-input {
+  width: 100%;
+}
+
+.search-results {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  left: 0;
+  width: calc(420px * var(--ui-scale));
+  max-width: min(calc(420px * var(--ui-scale)), calc(100vw - 2 * var(--edge)));
+  max-height: min(60vh, calc(520px * var(--ui-scale)));
+  background: var(--surface-3);
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-2);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.5);
+  padding: var(--sp-1);
+  margin: 0;
+  list-style: none;
+  z-index: 40;
+  animation: panel-in var(--t-fast) var(--ease);
+}
+
+.search-results:empty {
+  display: none;
+}
+
+.search-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: 'name dist' 'meta dist';
+  gap: 0 var(--sp-3);
+  align-items: center;
+  padding: var(--sp-2);
+  border-radius: var(--r-1);
+  cursor: pointer;
+}
+
+.search-row.is-cursor,
+.search-row:hover {
+  background: var(--surface-hover);
+}
+
+.search-row .r-name {
+  grid-area: name;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-small);
+  color: var(--ink);
+  min-width: 0;
+}
+
+.search-row .r-name > span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-row .r-meta {
+  grid-area: meta;
+  font-size: var(--fs-micro);
+  color: var(--dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.search-row .r-dist {
+  grid-area: dist;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-tiny);
+  color: var(--ink-2);
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Per-row actions appear only on the focused row, so a long list of results
+   stays a list of names rather than a wall of buttons. */
+.search-actions {
+  grid-area: dist;
+  display: none;
+  gap: var(--sp-1);
+}
+
+.search-row.is-cursor .search-actions {
+  display: flex;
+}
+
+.search-row.is-cursor .r-dist {
+  display: none;
+}
+
+.search-actions .btn {
+  font-size: var(--fs-micro);
+  padding: 1px var(--sp-2);
+}
+
+.search-empty,
+.search-hint {
+  padding: var(--sp-3);
+  font-size: var(--fs-small);
+  color: var(--dim);
+}
+
+.search-group {
+  padding: var(--sp-2) var(--sp-2) var(--sp-1);
+  font-size: var(--fs-micro);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--dim-2);
+}
+
+/* --------------------------------------------------------------- side panels */
+
+.region-right {
+  padding-top: 0;
+  padding-bottom: 0;
+  justify-content: flex-start;
+  gap: var(--sp-3);
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.region-right::-webkit-scrollbar {
+  display: none;
+}
+
+.panel-dock {
+  width: calc(258px * var(--ui-scale));
+  flex: none;
+}
+
+/* On a short window the stack of docked panels can exceed the height available;
+   the region scrolls, and each panel's own body is capped so one very long panel
+   cannot push the others off-screen entirely. */
+.panel-dock .panel-body {
+  max-height: min(46vh, calc(460px * var(--ui-scale)));
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
+}
+
+.panel-caret {
+  width: 0;
+  height: 0;
+  flex: none;
+  border-left: 3.5px solid var(--dim);
+  border-top: 3.5px solid transparent;
+  border-bottom: 3.5px solid transparent;
+  transform: rotate(90deg);
+  transition: transform var(--t-fast) var(--ease);
+}
+
+.panel.is-collapsed .panel-caret {
+  transform: none;
+}
+
+/* -------------------------------------------------------- object information */
+
+/* The name, class and action row at the top of an inspector or selection panel.
+   Shared because an object is presented the same way in both views. */
+
+.obj-head {
+  margin-bottom: var(--sp-3);
+}
+
+.obj-name {
+  margin: 0;
+  font-size: var(--fs-title);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  color: var(--ink);
+}
+
+.obj-class {
+  margin-top: var(--sp-1);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-tiny);
+  color: var(--dim);
+}
+
+.obj-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin-top: var(--sp-3);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+}
+
+.obj-actions .btn {
+  flex: 1 1 auto;
+  justify-content: center;
+  font-size: var(--fs-tiny);
+  padding: var(--sp-1) var(--sp-2);
+}
+
+.obj-empty {
+  font-size: var(--fs-small);
+  color: var(--dim);
+  line-height: 1.5;
+}
+
+/* --------------------------------------------------------------------- time */
+
+.timebar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-3);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+
+.timebar .time-date {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-small);
+  color: var(--ink);
+  white-space: nowrap;
+}
+
+.timebar .time-rate {
+  font-size: var(--fs-micro);
+  color: var(--dim);
+  min-width: calc(58px * var(--ui-scale));
+  text-align: right;
+  white-space: nowrap;
+}
+
+.time-step {
+  font-family: var(--mono);
+  width: calc(24px * var(--ui-scale));
+  height: calc(22px * var(--ui-scale));
+  padding: 0;
+  justify-content: center;
+}
+
+/* ------------------------------------------------------------------ bar bits */
+
+/* Vertical hairline separating groups inside a horizontal bar. */
+.rule {
+  width: 1px;
+  align-self: stretch;
+  background: var(--line);
+  margin: 0 var(--sp-1);
+}
+
+.bottom-left,
+.bottom-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.menu button[disabled] {
+  opacity: 0.32;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ reticle */
+
+/*
+ * Fixed to the viewport, not to the layout grid. The centre cell of the grid is
+ * bounded by the side regions, so its middle is wherever the panels happen to
+ * leave it — which is not where the camera is pointing.
+ */
+.reticle {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  width: calc(30px * var(--ui-scale));
+  height: calc(30px * var(--ui-scale));
+  opacity: 0.5;
+  transition: opacity var(--t-mid) var(--ease);
+}
+
+/* Applied by css(node, 'is-hidden', …) wherever something is hidden for a
+   reason other than the panel it lives in being closed, so that `hidden` stays
+   free for the panel machinery to use without the two fighting each other. */
+.is-hidden {
+  display: none !important;
+}
+
+/* Four short ticks with a gap in the middle. Deliberately not a cross: an
+   unbroken crosshair reads as a weapon sight and covers the thing it points at. */
+.reticle::before,
+.reticle::after {
+  content: '';
+  position: absolute;
+  background: var(--accent);
+  opacity: 0.85;
+}
+
+.reticle::before {
+  left: 50%;
+  top: 0;
+  width: 1px;
+  height: 100%;
+  transform: translateX(-50%);
+  /* The gap is cut with a mask rather than by using four elements. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 0 26%, transparent 26% 74%, #000 74% 100%);
+  mask-image: linear-gradient(to bottom, #000 0 26%, transparent 26% 74%, #000 74% 100%);
+}
+
+.reticle::after {
+  top: 50%;
+  left: 0;
+  height: 1px;
+  width: 100%;
+  transform: translateY(-50%);
+  -webkit-mask-image: linear-gradient(to right, #000 0 26%, transparent 26% 74%, #000 74% 100%);
+  mask-image: linear-gradient(to right, #000 0 26%, transparent 26% 74%, #000 74% 100%);
+}
+
+/* --------------------------------------------------------------------- rail */
+
+/* The navigation rail is an icon strip that expands to show labels. It scrolls
+   independently and is centred vertically so it does not stretch to the full
+   height of a tall monitor. */
+.rail {
+  align-self: center;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-2);
+  width: var(--rail-w);
+  max-height: 100%;
+  overflow: hidden;
+  transition: width var(--t-mid) var(--ease);
+}
+
+.rail.is-open {
+  width: var(--rail-w-open);
+}
+
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  font: inherit;
+  font-size: var(--fs-small);
+  color: var(--dim);
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-2);
+  padding: var(--sp-2);
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+
+.rail-item:hover {
+  color: var(--ink);
+  background: var(--surface-hover);
+}
+
+.rail-item.is-active {
+  color: var(--accent);
+  background: var(--surface-active);
+}
+
+.rail-item .icon {
+  flex: none;
+}
+
+/* Labels are always in the DOM and only faded, so expanding the rail does not
+   reflow its contents or change the height of the strip. */
+.rail-item .rail-label {
+  opacity: 0;
+  transition: opacity var(--t-fast) var(--ease);
+}
+
+.rail.is-open .rail-item .rail-label {
+  opacity: 1;
+}
+
+.rail-sep {
+  height: 1px;
+  background: var(--line);
+  margin: var(--sp-1) var(--sp-2);
+  flex: none;
+}
+
+/* ------------------------------------------------------------- help and prose */
+
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(calc(200px * var(--ui-scale)), 1fr));
+  gap: var(--sp-5);
+}
+
+.help-keys {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-small);
+  align-items: baseline;
+}
+
+.help-keys kbd,
+.help-keys button.rebind {
+  font-family: var(--mono);
+  font-size: var(--fs-tiny);
+  color: var(--accent);
+  background: var(--surface-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-1);
+  padding: 0 var(--sp-1);
+  white-space: nowrap;
+  justify-self: start;
+}
+
+.help-keys button.rebind {
+  font: inherit;
+  font-family: var(--mono);
+  font-size: var(--fs-tiny);
+  cursor: pointer;
+}
+
+.help-keys button.rebind.is-listening {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.help-keys span {
+  color: var(--ink-2);
+}
+
+.prose {
+  font-size: var(--fs-small);
+  line-height: 1.65;
+  color: var(--ink-2);
+  margin: 0 0 var(--sp-3);
+}
+
+.prose b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.prose.is-credits {
+  font-size: var(--fs-micro);
+  color: var(--dim);
+}
+
+/* ------------------------------------------------------------------ sections */
+
+/* Any section after the first gets a divider, whether the thing above it is
+   another section or loose content — a panel that opens with a couple of fields
+   and then starts sectioning is common, and matching only section-to-section
+   left those titles sitting on the content above them. */
+.section:not(:first-child) {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.section-title {
+  font-size: var(--fs-micro);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--dim-2);
+  margin-bottom: var(--sp-2);
+}
+
+/* ---------------------------------------------------------------- type badge */
+
+/* Object class, shown next to every name in search results, the inspector and
+   the context menu. Tinted by class so the kind of thing is legible before the
+   label is read. */
+.badge {
+  display: inline-block;
+  font-size: var(--fs-micro);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 1px calc(var(--sp-1) + 1px);
+  border-radius: var(--r-1);
+  border: 1px solid currentColor;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+
+.badge.k-star { color: #ffd479; }
+.badge.k-planet { color: #7fd4ff; }
+.badge.k-moon { color: #b8c6d8; }
+.badge.k-asteroid { color: #c9a37a; }
+.badge.k-comet { color: #9ce8d8; }
+.badge.k-galaxy { color: #c8a6ff; }
+.badge.k-nebula { color: #ff9ec4; }
+.badge.k-cluster { color: #a8d8ff; }
+.badge.k-black-hole { color: #ff8d7a; }
+.badge.k-exo-planet { color: #86e0b0; }
+.badge.k-system { color: #9fb2c8; }
+
+/* Human-made things, in a family of their own so a spacecraft never reads as a
+   world. Warmer and greyer than the celestial badges, split by what it does. */
+.badge.k-craft,
+.badge.k-satellite { color: #8fb8d8; }
+.badge.k-station { color: #7fe0e8; }
+.badge.k-telescope { color: #a9d8ef; }
+.badge.k-orbiter { color: #9fc6e8; }
+.badge.k-probe,
+.badge.k-flyby { color: #f0b877; }
+.badge.k-rover { color: #ffb38a; }
+.badge.k-lander { color: #e0c090; }
+.badge.k-capsule { color: #ffd0a0; }
+.badge.k-stage,
+.badge.k-debris { color: #96a0aa; }
+
+/* ------------------------------------------------------------------ immersive */
+
+/* Immersive mode fades the whole interface out and stops it taking events, so a
+   screenshot has nothing in it and a drag anywhere moves the camera. Kept as
+   opacity rather than display:none so it fades rather than blinks, and so
+   nothing has to be re-laid-out when it comes back. */
+body.immersive .ui-layer,
+body.immersive .tooltip,
+body.immersive .menu,
+body.immersive .dialog,
+body.immersive .label-layer {
+  opacity: 0;
+  transition: opacity var(--t-slow) var(--ease);
+}
+
+/*
+ * The descendant selector matters. `pointer-events` is not inherited in a way
+ * that a child can be held to: the layer's own children are explicitly set to
+ * `auto` so the view can be dragged through the gaps between panels, and a
+ * `none` on the ancestor alone leaves them clickable. Without this, immersive
+ * mode produces invisible panels that still swallow clicks meant for the view.
+ */
+body.immersive .ui-layer,
+body.immersive .ui-layer *,
+body.immersive .tooltip,
+body.immersive .menu,
+body.immersive .menu *,
+body.immersive .dialog,
+body.immersive .dialog *,
+body.immersive .label-layer {
+  pointer-events: none !important;
+}
+
+.immersive-hint {
+  position: fixed;
+  left: 50%;
+  bottom: var(--sp-5);
+  transform: translateX(-50%);
+  z-index: 60;
+  font-size: var(--fs-tiny);
+  color: var(--dim);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  pointer-events: none;
+  opacity: 0;
+  /* No delay on the way out: leaving immersive mode should take the hint with it
+     immediately. The delay that lets the hint linger long enough to be read is on
+     the immersive rule above, which is the transition into that state. */
+  transition: opacity var(--t-fast) var(--ease);
+}
+
+body.immersive .immersive-hint {
+  /* Visible on arrival, then fades itself so it is not in the screenshot it
+     exists to enable. */
+  animation: hint-linger 5s var(--ease) forwards;
+}
+
+@keyframes hint-linger {
+  0% { opacity: 0; }
+  8% { opacity: 1; }
+  60% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* -------------------------------------------------------------------- loading */
+
+#loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(circle at 50% 45%, #0a1020 0%, var(--void) 72%);
+  z-index: 100;
+  transition: opacity var(--t-slow) var(--ease);
+}
+
+/* Both spellings: the explorer sets `is-done`, the planetarium's loader sets
+   `done`. Cheaper to accept both here than to have the two apps disagree. */
+#loading.is-done,
+#loading.done {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.loading-title {
+  font-family: var(--mono);
+  letter-spacing: 0.52em;
+  font-size: var(--fs-large);
+  text-align: center;
+  color: var(--ink);
+}
+
+.loading-sub {
+  margin-top: var(--sp-4);
+  font-size: var(--fs-small);
+  color: var(--dim);
+  text-align: center;
+}
+
+.loading-bar {
+  margin-top: var(--sp-4);
+  width: calc(220px * var(--ui-scale));
+  height: 2px;
+  background: rgba(140, 175, 215, 0.18);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.loading-bar > div {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  transition: width var(--t-mid) var(--ease);
+}
+
+/* ------------------------------------------------------------- responsive */
+
+/*
+ * The layout is fluid, but a few things have to change rather than shrink.
+ * Panels are a fixed width so text stays readable; what gives way is how many
+ * of them are on screen at once.
+ */
+
+/*
+ * Ultrawide: draw the panels in from the far edges, where on a 21:9 monitor they
+ * sit outside comfortable vision.
+ *
+ * The inset is capped at 22vw minus the width of the dock, not simply at half the
+ * excess over some ideal width. Centring on a nominal width overshoots badly as
+ * the monitor gets wider — at 3440 it walks the panels into the middle of the
+ * view, which is the one thing the layout exists to prevent.
+ */
+@media (min-aspect-ratio: 2/1) {
+  :root { --inset: max(var(--edge), min(calc((100vw - 2100px) / 2), calc(22vw - 320px))); }
+  .region-left { padding-left: var(--inset); }
+  .region-right { padding-right: var(--inset); }
+  .region-top,
+  .region-bottom { padding-left: var(--inset); padding-right: var(--inset); }
+}
+
+/* Short windows: the right-hand stack gets less room, so cap each panel harder
+   and let the region scroll. */
+@media (max-height: 780px) {
+  .panel-dock .panel-body { max-height: 34vh; }
+}
+
+@media (max-width: 1180px) {
+  .brand-sub { display: none; }
+}
+
+@media (max-width: 980px) {
+  .search { flex-basis: calc(210px * var(--ui-scale)); }
+}
+
+@media (max-width: 820px) {
+  .panel-dock { width: calc(216px * var(--ui-scale)); }
+  .brand-name { display: none; }
+}
+
+/* Narrow enough that side panels and the view cannot coexist. The rail stays,
+   because it is how the panels are summoned back. */
+@media (max-width: 680px) {
+  .region-right { display: none; }
+  .rail { width: var(--rail-w) !important; }
+  .rail .rail-label { display: none; }
+  .region-bottom { justify-content: center; }
+}

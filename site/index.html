@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Cosminova — a universe at true scale</title>
+    <meta
+      name="description"
+      content="A real-scale solar system you can fly through. Bodies sit at their measured distances in kilometres, rendered from spacecraft imagery and elevation data — thirteen orders of magnitude without a cut."
+    />
+    <meta name="theme-color" content="#05070c" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Cosminova — a universe at true scale" />
+    <meta
+      property="og:description"
+      content="A real-scale solar system you can fly through, from four billion kilometres out to a few metres above a crater floor."
+    />
+    <meta property="og:image" content="assets/hero.jpg" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <link rel="preload" as="image" href="assets/hero.jpg" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav" id="nav">
+      <div class="nav__inner">
+        <a class="nav__brand" href="#top" aria-label="Cosminova home">
+          <span class="nav__mark" aria-hidden="true"></span>
+          <span class="nav__name">COSMINOVA</span>
+        </a>
+        <nav class="nav__links" aria-label="Sections">
+          <a href="#features">Engine</a>
+          <a href="#gallery">Gallery</a>
+          <a href="#data">Data</a>
+          <a class="nav__cta" href="#download">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main id="main">
+      <!-- Hero -->
+      <section class="hero" id="top">
+        <div class="hero__media">
+          <video
+            class="hero__video"
+            poster="assets/hero.jpg"
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="auto"
+            aria-hidden="true"
+            tabindex="-1"
+          >
+            <source src="assets/hero-loop.mp4" type="video/mp4" />
+          </video>
+          <div class="hero__scrim" aria-hidden="true"></div>
+        </div>
+
+        <div class="hero__body">
+          <p class="hero__eyebrow">Real scale · real data · real physics</p>
+          <h1 class="hero__title">COSMINOVA</h1>
+          <p class="hero__lede">
+            A solar system at true scale, and a sky you can stand under. Every body sits at its
+            measured distance in kilometres — thirteen orders of magnitude from four billion
+            kilometres out to a few metres above a crater floor, without a cut or a scale change.
+          </p>
+
+          <div class="actions" id="hero-actions">
+            <a class="btn btn--primary" href="#download" data-download="windows">
+              <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M3 5.6 10.2 4.6v6.7H3zM11.4 4.4 21 3v8.3h-9.6zM3 12.5h7.2v6.7L3 18.2zM11.4 12.5H21V21l-9.6-1.4z"
+                />
+              </svg>
+              <span class="btn__text">
+                <strong>Download for Windows</strong>
+                <small>64-bit installer</small>
+              </span>
+            </a>
+
+            <!-- Deliberately inert: the macOS build is not ready, and a button
+                 that looks live but does nothing is worse than one that says so. -->
+            <button class="btn btn--ghost" type="button" disabled aria-disabled="true">
+              <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  fill="currentColor"
+                  d="M16.4 12.7c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.6.8-3.3.8s-1.7-.8-2.9-.8c-1.5 0-2.9.9-3.6 2.2-1.6 2.7-.4 6.7 1.1 8.9.7 1.1 1.6 2.3 2.8 2.2 1.1 0 1.5-.7 2.9-.7s1.7.7 2.9.7c1.2 0 2-1.1 2.7-2.2.5-.8.8-1.6 1-2.4-.1 0-2.3-.9-2.3-3.6zM14.3 5.9c.6-.7 1-1.7.9-2.7-.9 0-2 .6-2.6 1.3-.6.6-1.1 1.6-.9 2.6 1 .1 2-.5 2.6-1.2z"
+                />
+              </svg>
+              <span class="btn__text">
+                <strong>macOS</strong>
+                <small>Coming soon</small>
+              </span>
+            </button>
+          </div>
+
+          <p class="hero__alt">
+            Or <a href="app/index.html">open it in your browser</a> — no install, needs WebGL2.
+          </p>
+        </div>
+
+        <div class="hero__hint" aria-hidden="true"><span></span></div>
+      </section>
+
+      <!-- Numbers -->
+      <section class="stats" aria-label="At a glance">
+        <ul class="stats__list">
+          <li class="reveal">
+            <span class="stats__num">10<sup>13</sup></span>
+            <span class="stats__label">orders of scale, in one continuous scene</span>
+          </li>
+          <li class="reveal">
+            <span class="stats__num">119</span>
+            <span class="stats__label">spacecraft, landers, rovers and landing sites</span>
+          </li>
+          <li class="reveal">
+            <span class="stats__num">1:1</span>
+            <span class="stats__label">distances, in kilometres, never compressed</span>
+          </li>
+          <li class="reveal">
+            <span class="stats__num">0</span>
+            <span class="stats__label">pre-rendered imagery of the scene itself</span>
+          </li>
+        </ul>
+      </section>
+
+      <!-- Features -->
+      <section class="section" id="features">
+        <div class="section__head reveal">
+          <p class="section__eyebrow">The engine</p>
+          <h2 class="section__title">Nothing here is faked for the camera</h2>
+          <p class="section__lede">
+            Built on Three.js and WebGL2 with no game engine underneath. The scene is computed from
+            catalogues and physics every frame, which is why you can fly at it from any direction
+            and it still holds up.
+          </p>
+        </div>
+
+        <div class="cards">
+          <article class="card reveal">
+            <h3 class="card__title">True scale, no cheating</h3>
+            <p>
+              Bodies are placed by ephemeris at their real separations and drawn at their real
+              radii. The camera crosses thirteen orders of magnitude without a loading screen or a
+              hidden change of units — the depth buffer is logarithmic so a rover and a gas giant
+              can share one frame.
+            </p>
+          </article>
+
+          <article class="card reveal">
+            <h3 class="card__title">Surfaces from measurement</h3>
+            <p>
+              Terrain is spacecraft imagery over real elevation, streamed as a level-of-detail
+              cubesphere. The Moon's relief comes from Lunar Orbiter Laser Altimeter data, so a
+              crater you descend into is the crater that is actually there.
+            </p>
+          </article>
+
+          <article class="card reveal">
+            <h3 class="card__title">Atmospheres that scatter</h3>
+            <p>
+              Skies are integrated per-wavelength through Rayleigh and Mie scattering rather than
+              tinted by hand. It is the same calculation that makes Earth's sunset red and, with a
+              thinner atmosphere and more dust, makes Mars's sunset come out blue.
+            </p>
+          </article>
+
+          <article class="card reveal">
+            <h3 class="card__title">Stars with real physics</h3>
+            <p>
+              Radii are derived from luminosity and spectral type through Stefan–Boltzmann, so
+              Betelgeuse arrives at 712 solar radii — 3.3 astronomical units, wide enough to
+              swallow the orbit of Mars — and glows the colour its temperature says it should.
+            </p>
+          </article>
+
+          <article class="card reveal">
+            <h3 class="card__title">Light bent by gravity</h3>
+            <p>
+              Black holes are ray-marched through the Schwarzschild metric. The photon ring is not
+              a texture or a sprite: it is light from behind the hole, bent around the front and
+              arriving at the camera the long way.
+            </p>
+          </article>
+
+          <article class="card reveal">
+            <h3 class="card__title">Time you can drive</h3>
+            <p>
+              Wind the clock and the whole system moves on its real ephemeris — eclipses fall where
+              they fall, moons shadow their planets, and a spacecraft is wherever JPL Horizons says
+              it was on that date.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <!-- Gallery -->
+      <section class="section section--flush" id="gallery">
+        <div class="section__head reveal">
+          <p class="section__eyebrow">Gallery</p>
+          <h2 class="section__title">Captured in the renderer, not in a paint program</h2>
+          <p class="section__lede">
+            Every frame below is a screenshot of the running app, reproducible from a camera
+            position and a date.
+          </p>
+        </div>
+
+        <div class="gallery">
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/earth-sunset.jpg"
+              alt="The sun low over Earth's horizon, the sky graded from deep blue to gold"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption><strong>Earth</strong> Sunset is just air in the way.</figcaption>
+          </figure>
+
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/earth-dusk.jpg"
+              alt="A narrow band of orange twilight above a dark Earth, the planet's shadow rising"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption><strong>Twilight</strong> The planet's own shadow climbing the sky.</figcaption>
+          </figure>
+
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/mars-sunset.jpg"
+              alt="A pale blue-white glow above the dusty Martian horizon"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption><strong>Mars</strong> Same star, and the sunset comes out blue.</figcaption>
+          </figure>
+
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/trappist-1e.jpg"
+              alt="A red dwarf star setting over the limb of TRAPPIST-1 e"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption><strong>TRAPPIST-1 e</strong> A sun four times wider than ours.</figcaption>
+          </figure>
+
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/the-sun.jpg"
+              alt="The Sun's granulated photosphere filling the frame"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption><strong>The Sun</strong> From eight times its own radius.</figcaption>
+          </figure>
+
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/betelgeuse.jpg"
+              alt="Betelgeuse as a vast amber disc, its surface mottled with convective granulation"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption><strong>Betelgeuse</strong> 712 solar radii, at 3600 kelvin.</figcaption>
+          </figure>
+
+          <figure class="shot reveal shot--wide">
+            <img
+              src="assets/shots/sagittarius-a.jpg"
+              alt="Sagittarius A* with its accretion disc warped into a photon ring by gravitational lensing"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption>
+              <strong>Sagittarius A*</strong> Four million suns in a point, and the ring is light
+              from behind it.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
+      <!-- Download -->
+      <section class="section download" id="download">
+        <div class="download__inner">
+          <div class="download__copy reveal">
+            <p class="section__eyebrow">Get it</p>
+            <h2 class="section__title">Run it on your desktop</h2>
+            <p class="section__lede">
+              The desktop build is the same renderer with the GPU gloves off — it can ask for the
+              discrete adapter and keep the compositor off the main thread, which a browser tab
+              cannot.
+            </p>
+
+            <div class="actions">
+              <a
+                class="btn btn--primary"
+                href="https://github.com/cosminova/info/releases/latest"
+                data-download="windows"
+              >
+                <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M3 5.6 10.2 4.6v6.7H3zM11.4 4.4 21 3v8.3h-9.6zM3 12.5h7.2v6.7L3 18.2zM11.4 12.5H21V21l-9.6-1.4z"
+                  />
+                </svg>
+                <span class="btn__text">
+                  <strong>Download for Windows</strong>
+                  <small>64-bit installer</small>
+                </span>
+              </a>
+
+              <button class="btn btn--ghost" type="button" disabled aria-disabled="true">
+                <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    fill="currentColor"
+                    d="M16.4 12.7c0-2.2 1.8-3.3 1.9-3.4-1-1.5-2.6-1.7-3.2-1.7-1.4-.1-2.6.8-3.3.8s-1.7-.8-2.9-.8c-1.5 0-2.9.9-3.6 2.2-1.6 2.7-.4 6.7 1.1 8.9.7 1.1 1.6 2.3 2.8 2.2 1.1 0 1.5-.7 2.9-.7s1.7.7 2.9.7c1.2 0 2-1.1 2.7-2.2.5-.8.8-1.6 1-2.4-.1 0-2.3-.9-2.3-3.6zM14.3 5.9c.6-.7 1-1.7.9-2.7-.9 0-2 .6-2.6 1.3-.6.6-1.1 1.6-.9 2.6 1 .1 2-.5 2.6-1.2z"
+                  />
+                </svg>
+                <span class="btn__text">
+                  <strong>macOS</strong>
+                  <small>Coming soon</small>
+                </span>
+              </button>
+            </div>
+
+            <p class="download__note">
+              Prefer not to install? <a href="app/index.html">Open it in the browser</a> instead.
+            </p>
+          </div>
+
+          <aside class="specs reveal" aria-label="System requirements">
+            <h3 class="specs__title">What it needs</h3>
+            <dl class="specs__list">
+              <div>
+                <dt>Windows</dt>
+                <dd>10 or 11, 64-bit</dd>
+              </div>
+              <div>
+                <dt>Graphics</dt>
+                <dd>Any GPU with WebGL2 — discrete strongly preferred</dd>
+              </div>
+              <div>
+                <dt>Memory</dt>
+                <dd>8 GB, and rather more if you like the big textures</dd>
+              </div>
+              <div>
+                <dt>Disk</dt>
+                <dd>About 1 GB installed</dd>
+              </div>
+            </dl>
+            <p class="specs__foot">
+              The installer is not code-signed yet, so Windows SmartScreen will warn you once.
+              Choose <em>More info</em>, then <em>Run anyway</em>.
+            </p>
+          </aside>
+        </div>
+      </section>
+
+      <!-- Data -->
+      <section class="section" id="data">
+        <div class="section__head reveal">
+          <p class="section__eyebrow">Where the numbers come from</p>
+          <h2 class="section__title">Borrowed from people who measured it</h2>
+        </div>
+
+        <div class="sources reveal">
+          <p>
+            Body imagery from
+            <a href="https://www.solarsystemscope.com/textures/" rel="noopener">Solar System Scope</a>
+            (CC-BY 4.0), derived from NASA elevation and imagery. Lunar elevation from the NASA
+            Scientific Visualization Studio CGI Moon Kit, out of Lunar Orbiter Laser Altimeter data.
+            Star data from the HYG database compiled by David Nash from the Hipparcos, Yale Bright
+            Star and Gliese catalogues. Deep sky, constellation and asterism data from Olaf Frohn's
+            d3-celestial. Milky Way panorama by Serge Brunier (ESO). Planetary elements from JPL;
+            lunar theory from ELP2000 as presented in Meeus, <em>Astronomical Algorithms</em>.
+            Spacecraft trajectories from the
+            <a href="https://ssd.jpl.nasa.gov/horizons/" rel="noopener">JPL Horizons</a> system at
+            the Jet Propulsion Laboratory. Landing site coordinates from LROC and HiRISE imagery as
+            published by the Lunar and Planetary Institute and the USGS.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="foot__inner">
+        <span class="foot__name">COSMINOVA</span>
+        <span class="foot__note">Built with Three.js and WebGL2. No game engine.</span>
+      </div>
+    </footer>
+
+    <script src="main.js" type="module"></script>
+  </body>
+</html>

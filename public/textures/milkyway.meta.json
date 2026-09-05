@@ -1,0 +1,13 @@
+{
+  "source": "ESO / S. Brunier - GigaGalaxy Zoom",
+  "frame": "galactic",
+  "width": 6000,
+  "height": 3000,
+  "longitudeSign": -1,
+  "planeContrast": 5.661433746843782,
+  "tiers": [
+    "milkyway-4k.jpg",
+    "milkyway-2k.jpg",
+    "milkyway-1k.jpg"
+  ]
+}

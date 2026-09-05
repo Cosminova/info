@@ -1,0 +1,481 @@
+{
+ "sun": {
+  "colour": {
+   "far": {
+    "file": "bodies/sun-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/sun-colour-near.jpg",
+    "width": 4096,
+    "height": 2048
+   }
+  }
+ },
+ "mercury": {
+  "colour": {
+   "far": {
+    "file": "bodies/mercury-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/mercury-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "venus": {
+  "colour": {
+   "far": {
+    "file": "bodies/venus-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/venus-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  },
+  "clouds": {
+   "far": {
+    "file": "bodies/venus-clouds-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/venus-clouds-near.jpg",
+    "width": 4096,
+    "height": 2048
+   }
+  }
+ },
+ "earth": {
+  "colour": {
+   "far": {
+    "file": "bodies/earth-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/earth-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  },
+  "night": {
+   "far": {
+    "file": "bodies/earth-night-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/earth-night-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  },
+  "clouds": {
+   "far": {
+    "file": "bodies/earth-clouds-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/earth-clouds-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  },
+  "ocean": {
+   "far": {
+    "file": "bodies/earth-ocean-far.jpg"
+   }
+  }
+ },
+ "moon": {
+  "colour": {
+   "far": {
+    "file": "bodies/moon-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/moon-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  },
+  "dem": {
+   "128": {
+    "file": "bodies/moon-dem-128.png",
+    "width": 128,
+    "height": 64,
+    "scaleKm": 0.0005,
+    "offsetKm": -10,
+    "minKm": -6.935499999999999,
+    "maxKm": 8.648
+   },
+   "256": {
+    "file": "bodies/moon-dem-256.png",
+    "width": 256,
+    "height": 128,
+    "scaleKm": 0.0005,
+    "offsetKm": -10,
+    "minKm": -7.8115000000000006,
+    "maxKm": 8.6205
+   },
+   "512": {
+    "file": "bodies/moon-dem-512.png",
+    "width": 512,
+    "height": 256,
+    "scaleKm": 0.0005,
+    "offsetKm": -10,
+    "minKm": -8.428,
+    "maxKm": 9.806000000000001
+   },
+   "1024": {
+    "file": "bodies/moon-dem-1024.png",
+    "width": 1024,
+    "height": 512,
+    "scaleKm": 0.0005,
+    "offsetKm": -10,
+    "minKm": -8.5045,
+    "maxKm": 10.11
+   },
+   "2048": {
+    "file": "bodies/moon-dem-2048.png",
+    "width": 2048,
+    "height": 1024,
+    "scaleKm": 0.0005,
+    "offsetKm": -10,
+    "minKm": -8.815,
+    "maxKm": 10.606000000000002
+   },
+   "4096": {
+    "file": "bodies/moon-dem-4096.png",
+    "width": 4096,
+    "height": 2048,
+    "scaleKm": 0.0005,
+    "offsetKm": -10,
+    "minKm": -9.044,
+    "maxKm": 10.628499999999999
+   }
+  },
+  "norm": {
+   "128": {
+    "file": "bodies/moon-norm-128.jpg",
+    "width": 128,
+    "height": 64
+   },
+   "256": {
+    "file": "bodies/moon-norm-256.jpg",
+    "width": 256,
+    "height": 128
+   },
+   "512": {
+    "file": "bodies/moon-norm-512.jpg",
+    "width": 512,
+    "height": 256
+   },
+   "1024": {
+    "file": "bodies/moon-norm-1024.jpg",
+    "width": 1024,
+    "height": 512
+   },
+   "2048": {
+    "file": "bodies/moon-norm-2048.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "4096": {
+    "file": "bodies/moon-norm-4096.jpg",
+    "width": 4096,
+    "height": 2048
+   },
+   "8192": {
+    "file": "bodies/moon-norm-8192.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "mars": {
+  "colour": {
+   "far": {
+    "file": "bodies/mars-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/mars-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "jupiter": {
+  "colour": {
+   "far": {
+    "file": "bodies/jupiter-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/jupiter-colour-near.jpg",
+    "width": 4096,
+    "height": 2048
+   }
+  }
+ },
+ "saturn": {
+  "colour": {
+   "far": {
+    "file": "bodies/saturn-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/saturn-colour-near.jpg",
+    "width": 4096,
+    "height": 2048
+   }
+  },
+  "rings": {
+   "near": {
+    "file": "bodies/saturn-rings.png"
+   }
+  }
+ },
+ "uranus": {
+  "colour": {
+   "far": {
+    "file": "bodies/uranus-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   }
+  }
+ },
+ "neptune": {
+  "colour": {
+   "far": {
+    "file": "bodies/neptune-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   }
+  }
+ },
+ "ceres": {
+  "colour": {
+   "far": {
+    "file": "bodies/ceres-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/ceres-colour-near.jpg",
+    "width": 4096,
+    "height": 2048
+   }
+  }
+ },
+ "io": {
+  "colour": {
+   "far": {
+    "file": "bodies/io-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/io-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "europa": {
+  "colour": {
+   "far": {
+    "file": "bodies/europa-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/europa-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "ganymede": {
+  "colour": {
+   "far": {
+    "file": "bodies/ganymede-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/ganymede-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "callisto": {
+  "colour": {
+   "far": {
+    "file": "bodies/callisto-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/callisto-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "titan": {
+  "colour": {
+   "far": {
+    "file": "bodies/titan-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/titan-colour-near.jpg",
+    "width": 4040,
+    "height": 2020
+   }
+  }
+ },
+ "enceladus": {
+  "colour": {
+   "far": {
+    "file": "bodies/enceladus-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/enceladus-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "tethys": {
+  "colour": {
+   "far": {
+    "file": "bodies/tethys-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/tethys-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "dione": {
+  "colour": {
+   "far": {
+    "file": "bodies/dione-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/dione-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "rhea": {
+  "colour": {
+   "far": {
+    "file": "bodies/rhea-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/rhea-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "iapetus": {
+  "colour": {
+   "far": {
+    "file": "bodies/iapetus-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/iapetus-colour-near.jpg",
+    "width": 4096,
+    "height": 2048
+   }
+  }
+ },
+ "triton": {
+  "colour": {
+   "far": {
+    "file": "bodies/triton-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/triton-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "pluto": {
+  "colour": {
+   "far": {
+    "file": "bodies/pluto-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/pluto-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "charon": {
+  "colour": {
+   "far": {
+    "file": "bodies/charon-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/charon-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ },
+ "vesta": {
+  "colour": {
+   "far": {
+    "file": "bodies/vesta-colour-far.jpg",
+    "width": 2048,
+    "height": 1024
+   },
+   "near": {
+    "file": "bodies/vesta-colour-near.jpg",
+    "width": 8192,
+    "height": 4096
+   }
+  }
+ }
+}

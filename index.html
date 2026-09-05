@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <title>Cosminova — universe explorer</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="src/ui/theme.css" />
+    <link rel="stylesheet" href="src/style.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+
+    <!--
+      Everything below the canvas is built by src/ui/explorer-ui.js. The markup
+      is not written out here because most of it is data-driven — panels come and
+      go, their contents depend on what is selected, and their visibility is
+      restored from saved preferences at startup. Only the canvas, the loading
+      cover and the mount points are static.
+    -->
+    <div id="label-layer" class="label-layer" aria-hidden="true"></div>
+    <div id="ui-root"></div>
+
+    <div id="loading">
+      <div class="loading-inner">
+        <div class="loading-title">COSMINOVA</div>
+        <div class="loading-bar"><div id="loading-fill"></div></div>
+        <div id="loading-status" class="loading-sub">loading catalogues and surface imagery…</div>
+      </div>
+    </div>
+
+    <script type="module" src="src/space.js"></script>
+  </body>
+</html>

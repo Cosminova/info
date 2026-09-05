@@ -1,0 +1,1 @@
+{"count":119625,"magMin":-1.44,"magMax":21,"layout":[{"name":"position","type":"f32","components":3},{"name":"magnitude","type":"f32","components":1},{"name":"colorIndex","type":"f32","components":1},{"name":"distanceParsec","type":"f32","components":1}]}
