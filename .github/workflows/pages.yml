@@ -39,7 +39,12 @@ jobs:
       - name: Assemble the site
         run: node scripts/build-site.mjs
 
+      # enablement turns Pages on if it is not already, which is what makes the
+      # first deploy into a fresh repository work. Without it the action only
+      # reads the existing configuration and fails with a bare 404.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       # The bulk of this is the texture and elevation set under public/, which
       # Vite copies into dist/ — a good deal larger than a normal Pages upload,
