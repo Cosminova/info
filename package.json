@@ -29,6 +29,8 @@
     "check:geology": "node scripts/geology-check.mjs",
     "check:dest": "node scripts/dest-check.mjs",
     "check:flight": "node scripts/flight-check.mjs",
+    "check:roam": "node scripts/roam-check.mjs",
+    "check:onboard": "node scripts/onboard-check.mjs",
     "render:video": "node scripts/render-video.mjs",
     "check:travel": "node scripts/travel-check.mjs",
     "check:zoom": "node scripts/zoom-check.mjs",

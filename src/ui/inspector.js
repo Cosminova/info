@@ -357,19 +357,28 @@ export function createInspector({ onAction }) {
     text: 'Nothing selected. Click an object, or search for one, to see what it is.',
   });
 
+  /*
+   * What each button does, in words, because the labels alone do not say.
+   *
+   * There were eight of these and three were duplicates: `follow` ran the same
+   * two lines as `orbit`, and `center` the same one as `target`. So a reader
+   * comparing "Orbit", "Follow", "Center" and "Set target" was looking for
+   * distinctions that were not there, and the button that never lit up was the
+   * one whose mode the camera could never be in. Five actions, each doing
+   * something the others do not, and each saying so on hover.
+   */
   const ACTIONS = [
-    ['goto', 'Go to'],
-    ['orbit', 'Orbit'],
-    ['follow', 'Follow'],
-    ['track', 'Track'],
-    ['land', 'Land'],
-    ['onboard', 'View from spacecraft'],
-    ['center', 'Center'],
-    ['target', 'Set target'],
+    ['goto', 'Go to', 'Travel there, then hold an orbit around it'],
+    ['orbit', 'Orbit', 'Swing around it from where you already are, without travelling'],
+    ['track', 'Track', 'Fly with W A S D while this stays centred in the view'],
+    ['land', 'Land', 'Drop all the way to the surface and stand on it'],
+    ['onboard', 'View from spacecraft', 'Ride along and look out from the craft itself'],
+    ['target', 'Select only', 'Make this the target and read its figures, without moving the camera'],
   ];
   const buttons = new Map();
-  const actionRow = el('div', { class: 'obj-actions' }, ACTIONS.map(([id, label]) => {
+  const actionRow = el('div', { class: 'obj-actions' }, ACTIONS.map(([id, label, tip]) => {
     const button = el('button', { type: 'button', class: 'btn', text: label, onClick: () => onAction(id) });
+    button.dataset.tip = tip;
     buttons.set(id, button);
     return button;
   }));
@@ -438,7 +447,6 @@ export function createInspector({ onAction }) {
     setCapabilities({ canLand, canFollow, canRide, riding }) {
       css(buttons.get('land'), 'is-hidden', false);
       buttons.get('land').disabled = !canLand;
-      buttons.get('follow').disabled = !canFollow;
       buttons.get('track').disabled = !canFollow;
       const onboard = buttons.get('onboard');
       css(onboard, 'is-hidden', !canRide);
@@ -448,7 +456,7 @@ export function createInspector({ onAction }) {
 
     setMode(mode) {
       for (const [id, button] of buttons) {
-        if (id === 'follow' || id === 'track' || id === 'orbit') css(button, 'is-active', mode === id);
+        if (id === 'track' || id === 'orbit') css(button, 'is-active', mode === id);
       }
     },
 

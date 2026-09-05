@@ -71,7 +71,11 @@
   --blur: blur(14px) saturate(1.1);
   --edge: calc(12px * var(--ui-scale));
   --rail-w: calc(42px * var(--ui-scale));
-  --rail-w-open: calc(178px * var(--ui-scale));
+  /* Trimmed from 178px. The rail now opens by default, so its width is spent on
+     every visit rather than only when someone asks for it, and it is spent out
+     of the margin the scene has on the left before a panel beside it starts
+     covering the middle of the frame. 156px still holds every label. */
+  --rail-w-open: calc(156px * var(--ui-scale));
 
   /* One easing for everything that moves. Slightly overshoot-free and quick
      enough that the interface never feels like it is animating at you. */
@@ -1386,6 +1390,7 @@ body.immersive .ui-layer,
 body.immersive .tooltip,
 body.immersive .menu,
 body.immersive .dialog,
+body.immersive .intro,
 body.immersive .label-layer {
   opacity: 0;
   transition: opacity var(--t-slow) var(--ease);
@@ -1405,6 +1410,8 @@ body.immersive .menu,
 body.immersive .menu *,
 body.immersive .dialog,
 body.immersive .dialog *,
+body.immersive .intro,
+body.immersive .intro *,
 body.immersive .label-layer {
   pointer-events: none !important;
 }
@@ -1566,6 +1573,131 @@ body.immersive .label-layer {
   }
 }
 
+/* ---------------------------------------------------------------- first run
+
+   The one panel that is allowed to sit in the middle of the scene and take the
+   pointer, because on a first visit there is nothing behind it worth seeing
+   yet, and because everything it says stops applying the moment it is read. */
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  /* Deliberately not a modal. It began as one, with a full-screen scrim over
+     the pointer, and that was wrong twice: it dimmed the scene on the one visit
+     where the scene is doing the persuading, and it swallowed every click and
+     drag until dismissed — so the card telling you to drag to look around was
+     the thing stopping you. Only the card itself takes the pointer; the sky
+     behind it stays live, and anyone who would rather just fly can. */
+  pointer-events: none;
+}
+
+.intro[hidden] {
+  display: none;
+}
+
+.intro-card {
+  /* The fade belongs on the card and not on `.intro`, which has to keep an
+     opacity the cascade can still reach: an animation with a fill of `both`
+     beats a normal declaration, so animating the container left it permanently
+     at full opacity and immersive mode could not put it away. Every capture
+     script hides the interface and measures pixels, so the card sat in the
+     middle of the frame and was measured as part of the planet. */
+  animation: intro-in var(--t-slow) var(--ease) both;
+  pointer-events: auto;
+  width: min(520px, calc(100vw - 2 * var(--sp-4)));
+  padding: var(--sp-5);
+  /* Opaque enough to read over a sunlit planet, since it can now sit over one. */
+  background: linear-gradient(rgba(9, 12, 20, 0.94), rgba(6, 8, 14, 0.96));
+  border: 1px solid var(--line-2);
+  border-radius: var(--r-3);
+  backdrop-filter: blur(var(--blur));
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+}
+
+.intro-title {
+  font-size: var(--fs-title);
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.intro-sub {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-small);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
+.intro-steps {
+  margin: var(--sp-5) 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.intro-step {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-3);
+  align-items: start;
+}
+
+.intro-step-n {
+  display: grid;
+  place-items: center;
+  width: 1.55em;
+  height: 1.55em;
+  border-radius: 50%;
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: var(--fs-tiny);
+}
+
+.intro-step-name {
+  font-size: var(--fs-small);
+  color: var(--ink);
+}
+
+.intro-step-body {
+  margin-top: 2px;
+  font-size: var(--fs-tiny);
+  line-height: 1.55;
+  color: var(--dim);
+}
+
+.intro-actions {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* The one call to action that should be unmistakable, since the whole point of
+   the card is that the first move is not obvious. */
+.btn.is-primary {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.btn.is-primary:hover {
+  background: var(--accent);
+}
+
+@keyframes intro-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 .immersive-hint {
   position: fixed;
   left: 50%;
@@ -1694,6 +1826,20 @@ body.immersive .immersive-hint {
 
 /* Narrow enough that side panels and the view cannot coexist. The rail stays,
    because it is how the panels are summoned back. */
+/* The labelled rail and an open panel beside it need about 435px of the left
+   edge. Below roughly 1560px wide that is more than the frame can give before
+   the panel starts sitting over the middle of the view — over the thing you
+   came to look at — so the rail goes back to icons and earns its width back.
+   The labels are still one hover or one click of the toggle away, and the
+   welcome card and the guide both name the panels in words regardless. */
+@media (max-width: 1560px) {
+  /* Matching the specificity of the .rail.is-open rules above, and after them,
+     so these win: a plain `.rail` selector loses to `.rail.is-open` no matter
+     which media query it sits in. */
+  .rail.is-open { width: var(--rail-w); }
+  .rail.is-open .rail-item .rail-label { opacity: 0; }
+}
+
 @media (max-width: 680px) {
   .region-right { display: none; }
   .rail { width: var(--rail-w) !important; }

@@ -37,6 +37,23 @@ page.on('console', (m) => {
   if (m.type() === 'error') errors.push(m.text());
 });
 
+/*
+ * Start past the first-run welcome card. It is centred over the scene by
+ * design, and these checks drive the scene underneath it — a drag begun in the
+ * middle of the viewport would land on the card rather than the sky. A real
+ * first visit sees it; a regression check is not a first visit.
+ */
+await page.evaluateOnNewDocument(() => {
+  try {
+    const KEY = 'skyview.ui.v1';
+    const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+    saved.seenIntro = true;
+    localStorage.setItem(KEY, JSON.stringify(saved));
+  } catch {
+    /* private mode: the card will appear and the centre drags will miss. */
+  }
+});
+
 await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 90000 });
 await page.waitForFunction('window.cosminova && window.cosminova.ready', { timeout: 180000 });
 await page.evaluate(() => window.cosminova.setRate(0));
@@ -68,15 +85,15 @@ check('the pad is hidden in orbit mode', (await padVisible()) === false);
 // Switching to Free through the interface, the way a user does.
 const clicked = await page.evaluate(() => {
   const button = [...document.querySelectorAll('.seg button, .segmented button, button')].find(
-    (b) => b.textContent.trim() === 'Free',
+    (b) => b.textContent.trim() === 'Fly',
   );
   if (!button) return false;
   button.click();
   return true;
 });
-check('the interface offers a Free camera mode', clicked);
+check('the interface offers a thrust camera mode', clicked);
 await new Promise((r) => setTimeout(r, 500));
-check('choosing Free reveals the pad', (await padVisible()) === true);
+check('choosing Fly reveals the pad', (await padVisible()) === true);
 
 // The pad has to be usable with the mouse alone: that is the whole point.
 const before = await state();

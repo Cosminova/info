@@ -183,7 +183,12 @@ textures = new BodyTextures(await fetch('textures/bodies.json').then((r) => r.js
   anisotropy: renderer.capabilities.getMaxAnisotropy(),
 });
 
-const colorLookup = buildColorLookup(1024, 0.85);
+// Full physical colour rather than pulled a sixth of the way to white. The
+// dilution is meant to match what a dark-adapted eye reports, but that argument
+// applies to a naked-eye sky and this is a telescope: the reds and blues the
+// catalogue's colour indices carry are worth seeing, and washing them out was
+// most of why the field looked like grey grain.
+const colorLookup = buildColorLookup(1024, 1);
 const deepField = new DeepField({
   catalog: data.catalog,
   galaxies: data.galaxies,
@@ -1296,6 +1301,7 @@ const tmpOcculter2 = new Vector4();
 const tmpShine = new Vector3();
 const tmpOccWorld = new Vector3();
 const tmpSunWorld = new Vector3();
+const tmpRoamLocal = new Vector3();
 let lastFrame = performance.now();
 let smoothedFps = 60;
 let patchTotal = 0;
@@ -1366,17 +1372,120 @@ function placeRelative(group, world, key = null) {
   renderOffset(group.position, world, key);
 }
 
+/** Starlight reaching an orbit, in Earth-equivalents. */
+function exoFlux(luminositySol, au) {
+  return (luminositySol || 1) / Math.max(au * au, 1e-9);
+}
+
 /**
- * Starlight reaching an exoplanet, in Earth-equivalents, so `exposure` carries
- * the same meaning it does in the solar system. Above a few suns' worth the
- * curve goes logarithmic: a hot Jupiter at 0.05 AU really does take 400x
- * Earth's flux, and rendering that literally is a white disc, so the ordering
- * is preserved while the range stays inside what the tone mapper can show.
+ * Sunlight for an exoplanet surface, exposed for where the camera actually is.
+ *
+ * Flux within one system spans orders of magnitude — TRAPPIST-1e takes 0.65
+ * Earths, TOI-150.01 at 0.07 AU takes 650 — and multiplying albedo by that
+ * literally draws the second one as a featureless white disc, which is exactly
+ * what it looked like. Compressing the absolute figure does not help either,
+ * because the eye has no absolute reference out here: nothing in frame tells
+ * you whether you are seeing a bright planet or an overexposed one.
+ *
+ * The solar system already answers this by dividing out the flux at the
+ * target's own orbit (`exposureScale`), which is why Mercury reads as rock and
+ * not as a lamp. This is the same adaptation around other stars. Relative
+ * ordering survives — from a given vantage the worlds further in are still
+ * brighter — but the level lands where the tone mapper can show detail.
  */
-function exoIrradiance(luminositySol, au) {
-  const flux = luminositySol / Math.max(au * au, 1e-9);
-  if (flux <= 4) return Math.max(flux, 0.015);
-  return 4 + 3 * Math.log2(flux / 4);
+function exoSunIntensity(flux, referenceFlux, exposure) {
+  const relative = flux / Math.max(referenceFlux, 1e-9);
+  // A knee rather than a clamp above the adapted level, so a world well inside
+  // the one you are visiting still looks brighter instead of flattening to the
+  // same white as everything else. Continuous at relative = 1.
+  const rolled = relative <= 1 ? relative : Math.log2(relative + 1);
+  return Math.min(rolled, 2.6) * exposure;
+}
+
+/**
+ * The orbit the camera's eye is assumed to have adjusted to. The target if it
+ * belongs to this system, otherwise whichever world the camera is nearest, so
+ * that flying between planets adapts on the way rather than at arrival.
+ */
+function exoReferenceFlux(system, targetKey, hostLum, cameraWorld) {
+  const bodies = [...system.planets, ...system.moons];
+  if (!bodies.length) return 1;
+  const targeted = bodies.find((item) => item.spec.key === targetKey);
+  let chosen = targeted;
+  if (!chosen) {
+    let best = Infinity;
+    for (const item of bodies) {
+      if (!item.world) continue;
+      const d = cameraWorld.distanceTo(item.world);
+      if (d < best) {
+        best = d;
+        chosen = item;
+      }
+    }
+  }
+  if (!chosen) return 1;
+  return exoFlux(hostLum, chosen.spec.orbitKm / 149597870.7);
+}
+
+/**
+ * The body a roaming camera measures itself against: how fast thrust moves it,
+ * and the frame its position is held in.
+ *
+ * Measuring against whatever is nearest is what gives roaming the same feel at
+ * every scale — metres per second on an approach, parsecs per second between
+ * stars — and it is what lets you arrive somewhere by hand, because closing on
+ * a body slows you down automatically.
+ *
+ * An anchor is also a frame, though, and a planet's frame moves: anchored to
+ * Earth you are carried along Earth's orbit at thirty kilometres a second.
+ * Near a body that is exactly what you want, since you hover over the place
+ * you flew to instead of watching it slide out from under you. Far away it is
+ * not, so a body only holds the anchor while you are close enough for its
+ * motion to be the motion you share; past that the local star takes it, being
+ * the nearest thing to still that this scene has.
+ */
+function updateRoamFrame() {
+  if (controls.mode !== 'roam') return;
+  const starKey = exoSystem ? exoSystem.key : 'sun';
+  const starPos = exoSystem ? exoSystem.position : universe.get('sun').position;
+  let bestKey = null;
+  let bestPos = null;
+  let bestRadius = 1;
+  let bestSurface = Infinity;
+  const consider = (key, position, radiusKm) => {
+    // Through the camera's own frame rather than by subtracting two absolute
+    // positions, for the usual reason: see cameraLocalIn.
+    const distance = cameraLocalIn(position, key, tmpRoamLocal).length();
+    const surface = Math.max(distance - radiusKm, radiusKm * 1e-4);
+    if (surface >= bestSurface) return;
+    bestSurface = surface;
+    bestKey = key;
+    bestPos = position;
+    bestRadius = radiusKm;
+  };
+  for (const [key, planet] of planets) {
+    const body = universe.get(key);
+    if (body) consider(key, body.position, planet.radius);
+  }
+  // The sun is not among the loaded planets, and leaving it out meant that the
+  // one body you can see from anywhere in the system did nothing to slow you
+  // down as you flew at it.
+  const sun = universe.get('sun');
+  if (sun) consider('sun', sun.position, sun.spec?.radiusKm ?? 696000);
+  if (exoSystem) {
+    consider(starKey, starPos, exoSystem.star?.radius ?? 1);
+    for (const item of exoSystem.planets) {
+      if (item.world) consider(item.spec.key, item.world, item.spec.radiusKm);
+    }
+    for (const moon of exoSystem.moons) {
+      if (moon.world) consider(moon.spec.key, moon.world, moon.spec.radiusKm);
+    }
+  }
+  controls.roamReferenceKm = clamp(bestSurface, 0.05, 1e12);
+  // Three hundred radii out a body is a couple of degrees wide and its orbital
+  // motion is no longer yours to share.
+  if (bestKey && bestSurface < bestRadius * 300) controls.setRoamAnchor(bestKey, bestPos);
+  else controls.setRoamAnchor(starKey, starPos);
 }
 
 /** The camera in a body's own frame, exactly where the camera is anchored to it. */
@@ -1646,6 +1755,8 @@ function frame(now) {
   controls.bodyFrame = resolved?.kind === 'craft' && !state.viewFromEarth
     ? resolved.craft.orientation
     : null;
+
+  updateRoamFrame();
 
   const earth = universe.get('earth');
   controls.update(
@@ -1924,9 +2035,11 @@ function frame(now) {
     tmpCameraLocal.copy(cam).sub(exoSystem.position);
     exoSystem.star.update({ cameraLocal: tmpCameraLocal, time: now / 1000, distanceKm: hostDist });
     exoSystem.star.group.visible = (exoSystem.star.radius / hostDist) * pixelsPerRadian * 2 > 0.4;
-    // Irradiance in Earth-equivalents, so exposure means the same thing here as
-    // it does at home: a planet getting Earth's flux renders like Earth does.
+    // Exposure adapts to the orbit being visited, exactly as it does at home,
+    // so a world taking hundreds of Earths' flux reads as a lit planet rather
+    // than a white disc.
     const hostLum = exoSystem.luminositySol ?? 1;
+    const exoReference = exoReferenceFlux(exoSystem, state.target, hostLum, cam);
     for (const item of exoSystem.planets) {
       const distance = cameraLocalIn(item.world, item.spec.key, tmpCameraLocal).length();
       const apparentPixels = (item.spec.radiusKm / distance) * pixelsPerRadian * 2;
@@ -1950,7 +2063,7 @@ function frame(now) {
         patchScale: quality.patchScale,
         microDetail: quality.microDetail,
         sunColour,
-        sunIntensity: exoIrradiance(hostLum, au) * state.exposure,
+        sunIntensity: exoSunIntensity(exoFlux(hostLum, au), exoReference, state.exposure),
         viewLocal: tmpViewLocal,
         coneCos,
       });
@@ -1972,7 +2085,7 @@ function frame(now) {
         patchScale: quality.patchScale,
         microDetail: quality.microDetail,
         sunColour,
-        sunIntensity: exoIrradiance(hostLum, au) * state.exposure,
+        sunIntensity: exoSunIntensity(exoFlux(hostLum, au), exoReference, state.exposure),
         viewLocal: tmpViewDir,
         coneCos,
       });
@@ -2013,7 +2126,7 @@ function frame(now) {
     limitMagnitude: Math.min(7.2 + 2.5 * Math.log10(magnification), 21),
     gain: viewingGalaxy
       ? 0.1
-      : 0.02 / (1 + (targetRadius / Math.max(controls.distanceKm, 1)) * 10),
+      : 0.05 / (1 + (targetRadius / Math.max(controls.distanceKm, 1)) * 10),
     focusGalaxyIndex: viewingGalaxy ? destByKey.get(state.target)?.galaxyIndex ?? -1 : -1,
   });
 
@@ -2533,5 +2646,9 @@ ui.syncCamera();
 // Faded rather than removed, so the first frame is not a hard cut from the
 // loading cover to the scene.
 $('loading').classList.add('is-done');
-setTimeout(() => { $('loading').hidden = true; }, 400);
+setTimeout(() => {
+  $('loading').hidden = true;
+  // Only after the cover has gone, and only on a first visit.
+  ui.showIntroIfNew?.();
+}, 400);
 requestAnimationFrame(frame);

@@ -560,14 +560,23 @@ if (only !== 'maths') {
     const centre = Math.round(frame.width / 2);
     const margin = Math.round(diameter * 0.03);
     //
-    // Measured as a share of the light in the scan rather than as a pixel count,
-    // so that a background star happening to sit on the line cannot fail it while
-    // a sunlit patch, which would carry real brightness, still does.
+    // Bounded to the disc, because the claim is about sunlight on the Moon and
+    // only the Moon can carry it. Beyond the limb is sky, and the stars out
+    // there are not evidence of anything this test is looking for. It used to
+    // scan the full width and lean on the share of the light being small enough
+    // that a star could not matter, which held only while the stars were dim:
+    // two of them landing on the line carried a hundredth of the scan's energy
+    // and failed it. Inside the limb there is nothing to confuse — the disc
+    // occludes the sky behind it, so a lit pixel there is the surface.
+    const limb = centre + Math.round(diameter / 2);
+    //
+    // Measured as a share of the light rather than as a pixel count, so a
+    // sunlit patch, which carries real brightness, is what fails it.
     let litEnergy = 0;
     let beyondEnergy = 0;
     let beyondPixels = 0;
     scan.forEach((l, x) => {
-      if (l <= threshold) return;
+      if (l <= threshold || x > limb) return;
       litEnergy += l;
       if (x > centre + margin) {
         beyondEnergy += l;
@@ -578,7 +587,7 @@ if (only !== 'maths') {
     check(
       'no sunlight falls beyond the terminator of a half Moon',
       litEnergy > 20 && share < 0.005,
-      `${(share * 100).toFixed(3)}% of the light in the scan, in ${beyondPixels} px`,
+      `${(share * 100).toFixed(3)}% of the light on the disc, in ${beyondPixels} px`,
     );
   }
 

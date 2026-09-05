@@ -129,6 +129,11 @@ export function createFlightControls({ controls, prefs }) {
   speed.value = String(initial);
   text(speedValue, `${initial.toFixed(2)}\u00d7`);
 
+  const hint = el('div', {
+    class: 'flight-hint',
+    text: 'Thrust W/S \u00b7 slide A/D \u00b7 climb E, dive Q \u00b7 drag to steer',
+  });
+
   const root = el('div', { class: 'flight takes-pointer', hidden: true }, [
     el('div', { class: 'flight-row' }, [
       pad,
@@ -147,13 +152,11 @@ export function createFlightControls({ controls, prefs }) {
      * This is the sentence that was missing: everything here was already
      * possible, and nothing on screen said so.
      */
-    el('div', {
-      class: 'flight-hint',
-      text: 'Thrust W/S \u00b7 slide A/D \u00b7 climb E, dive Q \u00b7 drag to steer',
-    }),
+    hint,
   ]);
 
   let visible = false;
+  let roaming = false;
 
   return {
     root,
@@ -177,11 +180,26 @@ export function createFlightControls({ controls, prefs }) {
         void root.offsetWidth;
         root.classList.add('is-entering');
       } else {
+        roaming = false;
         for (const button of buttons) button.press(false);
         boost.setAttribute('aria-pressed', 'false');
         css(boost, 'is-active', false);
         controls.setInput('ShiftLeft', false);
       }
+    },
+
+    /**
+     * Roaming steers and throttles differently enough to need saying: the drag
+     * turns you where you stand instead of swinging you around a body, and the
+     * wheel has no distance left to close so it sets speed instead. Both are
+     * discoverable only by being told.
+     */
+    setRoaming(on) {
+      if (on === roaming) return;
+      roaming = on;
+      hint.textContent = on
+        ? 'Thrust W/S \u00b7 slide A/D \u00b7 climb E, dive Q \u00b7 drag to turn \u00b7 wheel sets speed'
+        : 'Thrust W/S \u00b7 slide A/D \u00b7 climb E, dive Q \u00b7 drag to steer';
     },
 
     /** Reflects keyboard presses on the pad, so the two never look unrelated. */

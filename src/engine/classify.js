@@ -218,12 +218,20 @@ function giantPalette(temperatureK, random) {
   else base = mixColour(warm, hot, Math.min((temperatureK - 800) / 700, 1));
 
   const tint = 0.9 + random() * 0.2;
+  // The three the band renderer reads are `desert`, `lowland` and `beach`: the
+  // pale zone, the dark belt, and the accent for storms. They need real
+  // separation to be seen as banding at all — Jupiter's belts are about twice
+  // the depth of its zones — where the ten per cent spread these once had
+  // vanished the moment any shading was applied.
+  const zone = base.map((c) => Math.min(c * 1.16 * tint, 1));
+  const belt = base.map((c) => c * 0.55 * tint);
+  const accent = base.map((c, i) => Math.min(c * (i === 0 ? 1.3 : i === 1 ? 1.05 : 0.85) * tint, 1));
   return {
     sea: base.map((c) => c * 0.55 * tint),
     shelf: base.map((c) => c * 0.65 * tint),
-    beach: base.map((c) => c * 0.8 * tint),
-    desert: base.map((c) => c * 0.95 * tint),
-    lowland: base.map((c) => c * 0.85 * tint),
+    beach: accent,
+    desert: zone,
+    lowland: belt,
     upland: base.map((c) => c * 1.0 * tint),
     rock: base.map((c) => c * 1.1 * tint),
     snow: base.map((c) => Math.min(c * 1.3 * tint, 1)),

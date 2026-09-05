@@ -671,6 +671,7 @@ const FRAGMENT = /* glsl */ `
   uniform float uSpecular;
   uniform float uPixelsPerRadian;
   uniform float uPolarSmooth;
+  uniform float uBanding;         // 0 for a solid surface, 1 for zonal cloud
   uniform float uMacroRelief;
   uniform float uIrregular;
   uniform vec3 uAxisScale;
@@ -760,7 +761,54 @@ const FRAGMENT = /* glsl */ `
    * frost sits, since that is a temperature boundary and follows lines of
    * latitude on any body with an atmosphere or an ice budget.
    */
+  /**
+   * Cloud-top colour for a world with no surface.
+   *
+   * A giant's markings follow its rotation rather than any geography: zonal
+   * jets shear cloud into belts that run the whole way round, so colour is
+   * very nearly a function of latitude alone. The isotropic field that gives a
+   * rocky world its continents is exactly the wrong structure here, and using
+   * it was half of why these planets did not read as planets — blotches where
+   * there should be bands, and nothing at all once the exposure clipped.
+   *
+   * Belt widths come from noise in latitude rather than a periodic function,
+   * so they vary instead of repeating; the latitude fed in is displaced by a
+   * broad field so the boundaries meander instead of ruling straight lines;
+   * and the eddies inside a belt are sampled from a field squashed across
+   * latitude, which stretches them along the flow the way shear does.
+   */
+  vec3 zonalAlbedo(vec3 dir) {
+    float latitude = clamp(dir.y, -1.0, 1.0);
+
+    // Boundaries waver. Perfect rings read as a machined object, not weather.
+    float meander = fbmd(dir * 1.9 + uSurfaceSeed, 3, 2.1, 0.5).x;
+    float zone = latitude + meander * 0.045;
+
+    // Sampled along the axis only, so each parallel is one colour. Two scales
+    // give broad belts with narrower ones inside them.
+    float wide = fbmd(vec3(0.0, zone * 3.6, 0.0) + uSurfaceSeed, 3, 2.0, 0.5).x;
+    float fine = fbmd(vec3(0.0, zone * 12.0, 0.0) + uSurfaceSeed * 1.7, 2, 2.0, 0.5).x;
+    float belt = clamp(0.5 + 0.60 * wide + 0.24 * fine, 0.0, 1.0);
+
+    vec3 colour = mix(uPaletteA, uPaletteB, smoothstep(0.30, 0.70, belt));
+
+    // Eddies, stretched along the flow: squashing the sample across latitude
+    // makes each feature many times longer in longitude than it is deep.
+    vec3 sheared = vec3(dir.x, dir.y * 4.5, dir.z) * (uPaletteFreq * 2.4) + uSurfaceSeed;
+    float storm = fbmd(sheared, 4, 2.17, 0.5).x * 0.5 + 0.5;
+    colour = mix(colour, uPaletteC, smoothstep(0.60, 0.94, storm) * 0.6);
+
+    // The poles run out of zonal structure and go flat and a little darker,
+    // which is what the polar hoods of both solar-system giants do.
+    float hood = smoothstep(0.70, 0.99, abs(latitude));
+    colour = mix(colour, mix(uPaletteA, uPaletteB, 0.5) * 0.86, hood * 0.7);
+
+    return colour;
+  }
+
   vec3 proceduralAlbedo(vec3 dir) {
+    if (uBanding > 0.001) return zonalAlbedo(dir);
+
     vec3 p = dir * uPaletteFreq + uSurfaceSeed;
 
     // Two independent fields: one broad enough to make continents, one finer for
@@ -1583,6 +1631,7 @@ export class Planet {
         uAtmosphereDensity: { value: spec.atmosphere ? spec.atmosphere.density : 0 },
         uSpecular: { value: spec.specular ?? 0 },
         uPolarSmooth: { value: spec.polarSmooth ?? 0 },
+        uBanding: { value: spec.banding ?? 0 },
         // Ridged noise over the whole body, which is the crude stand-in for
         // regional relief that the crust field replaces. A body with real geology
         // does not get both: the ridged term is a few thousandths of the radius

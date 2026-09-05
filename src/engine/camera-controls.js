@@ -56,8 +56,55 @@ export class OrbitApproachControls {
     this.riding = false;
     this._riderUp = new Vector3(0, 1, 0);
 
+    /**
+     * `orbit`, `fly` or `roam`.
+     *
+     * The first two both express the camera as a distance and a bearing from
+     * the target, which is rebuilt every frame; `fly` only differs in that
+     * thrust is applied along the view direction and the bearing is then
+     * recovered from where that put you. Useful, but it means the camera is
+     * always somewhere *relative to a body* — it inherits that body's motion,
+     * its distance is clamped, and its speed is set by its altitude above it.
+     *
+     * `roam` drops the tether: `worldPosition` becomes the state rather than a
+     * derived quantity, and the view direction is its own angle instead of
+     * being aimed down the line to the target. See the roam branch in `update`.
+     */
     this.mode = 'orbit';
     this.flySpeed = 0.55;
+    /**
+     * What roaming speed is measured against: kilometres to the nearest body's
+     * surface, filled in by the app each frame.
+     *
+     * Free space needs a speed that spans metres per second on a landing
+     * approach and parsecs per second between stars, and no single figure or
+     * slider range covers both. Flying keys off altitude above the target,
+     * which is the right instinct but the wrong reference once you have left
+     * that body behind — a hundred million kilometres from Earth, "altitude
+     * above Earth" makes every nudge a jump between planets. Keying off
+     * whatever is actually nearest gives the same proportional feel wherever
+     * you are, and it is what makes arriving somewhere on manual thrust
+     * possible: you slow down automatically as you close on it.
+     */
+    this.roamReferenceKm = 1e6;
+    /**
+     * Nearest body, for holding the camera's position as an exact offset from
+     * something rather than as an absolute vector. Also supplied by the app.
+     * @type {string|null}
+     */
+    this.roamOriginKey = null;
+    this.roamOriginPosition = new Vector3();
+    /**
+     * Where the camera is while roaming, as an offset from that nearest body.
+     *
+     * Not as an absolute position, for the reason given on `originOffset`: TOI
+     * 150 is 336 parsecs out, so a double holding the camera's absolute
+     * position there resolves about two kilometres, and thrust in metres would
+     * either do nothing or jump. Thrust accumulates here, on a small vector,
+     * and the absolute position is derived from it rather than the other way
+     * round. Changing anchor rebases this once — see `setRoamAnchor`.
+     */
+    this.roamOffset = new Vector3();
     this.cruise = 0;
     this.earthView = false;
     this.groundUp = new Vector3(0, 1, 0);
@@ -177,7 +224,22 @@ export class OrbitApproachControls {
         return;
       }
       const scale = this.orbitSensitivity * clamp(Math.log10(Math.max(this.distanceRadii, 1.001)), 0.02, 2.4);
-      if (this._dragging === 'look' || this.mode === 'fly' || this.earthView || this.riding) {
+      if (this.mode === 'roam') {
+        // Turning on the spot, and without a limit. The other modes steer with
+        // the look offsets, which are clamped to a cone because they are an
+        // offset from the line to the target — that would stop a roaming camera
+        // from turning round to look at where it had come from. Yaw and pitch
+        // are the view direction here, so they are what a drag moves.
+        const lookScale = this.lookSensitivity;
+        this.yaw = wrapAngle(this.yaw - dx * lookScale);
+        // Short of straight up: past vertical the view inverts, and with no roll
+        // control there is no way to recover an upright horizon from it.
+        this.pitch = clamp(this.pitch + dy * lookScale, -1.5533, 1.5533);
+        this.lookYaw = 0;
+        this.lookPitch = 0;
+        // No coasting: aiming by hand wants the view to stop when the hand does.
+        this._lastDrag.set(0, 0);
+      } else if (this._dragging === 'look' || this.mode === 'fly' || this.earthView || this.riding) {
         const lookScale = this.lookSensitivity;
         this.lookYaw = clamp(this.lookYaw - dx * lookScale, -2.8, 2.8);
         this.lookPitch = clamp(this.lookPitch + dy * lookScale, -1.5, 1.5);
@@ -270,6 +332,80 @@ export class OrbitApproachControls {
     this._keys.clear();
   }
 
+  /**
+   * Let go of the target and fly under your own power.
+   *
+   * The camera keeps its position and its view direction exactly: changing
+   * mode should be felt in what the controls do afterwards, not seen as the
+   * view jumping. The bearing the orbit frame was looking along, free look
+   * included, becomes the roaming bearing — `_forward` is the true view
+   * direction as of the last frame, which is what makes that conversion a copy
+   * rather than a guess.
+   */
+  startRoam() {
+    if (this.mode === 'roam') return;
+    this._flight = null;
+    this.cruise = 0;
+    if (this.riding) this.setRiding(false);
+    this.earthView = false;
+    const f = this._forward;
+    this.yaw = Math.atan2(f.x, f.z);
+    this.pitch = clamp(Math.asin(clamp(f.y, -1, 1)), -1.5533, 1.5533);
+    this.lookYaw = 0;
+    this.lookPitch = 0;
+    this.yawVelocity = 0;
+    this.pitchVelocity = 0;
+    this.zoomVelocity = 0;
+    this.mode = 'roam';
+    // Anchored to the body just left behind until the app names a nearer one.
+    // Taking the offset from `originOffset` where it is already the offset from
+    // this body keeps the precision the orbit frame had rather than throwing it
+    // away on a subtraction of two absolute positions.
+    this.roamOriginKey = this.targetKey;
+    this.roamOriginPosition.copy(this.targetPosition);
+    if (this.originKey !== null && this.originKey === this.targetKey) {
+      this.roamOffset.copy(this.originOffset);
+    } else {
+      this.roamOffset.subVectors(this.worldPosition, this.targetPosition);
+    }
+  }
+
+  /** Take hold of the target again, from wherever roaming left the camera. */
+  stopRoam() {
+    if (this.mode !== 'roam') return;
+    this.mode = 'orbit';
+    const dx = this.worldPosition.x - this.targetPosition.x;
+    const dy = this.worldPosition.y - this.targetPosition.y;
+    const dz = this.worldPosition.z - this.targetPosition.z;
+    const dist = Math.hypot(dx, dy, dz) || 1;
+    this.distanceRadii = clamp(
+      dist / Math.max(this.targetRadius, 1e-6),
+      this.minDistanceRadii,
+      this.maxDistanceRadii,
+    );
+    this._anglesFrom(dx, dy, dz);
+    this.lookYaw = 0;
+    this.lookPitch = 0;
+  }
+
+  /**
+   * Name the body the roaming camera holds its position relative to.
+   *
+   * Called every frame by the app with whatever is nearest. Re-expressing the
+   * offset costs one absolute subtraction, so it is done only when the anchor
+   * actually changes; the camera does not move, it is only described from
+   * somewhere else.
+   */
+  setRoamAnchor(key, position) {
+    if (key === this.roamOriginKey) {
+      this.roamOriginPosition.copy(position);
+      return;
+    }
+    this.roamOffset.subVectors(this.worldPosition, position);
+    this.roamOriginKey = key;
+    this.roamOriginPosition.copy(position);
+  }
+
   /** Whether a movement input is currently held, from either source. */
   isInputDown(code) {
     return this._keys.has(code);
@@ -297,6 +433,14 @@ export class OrbitApproachControls {
    * stays one continuous motion: keep pulling back and eventually you leave.
    */
   zoomBy(amount) {
+    if (this.mode === 'roam') {
+      // Nothing to zoom towards: the distance to the target is not what put the
+      // camera here, so moving it would be a lie. The wheel changes how fast
+      // you are travelling instead, which is the control you actually want to
+      // hand while flying and is otherwise buried in a slider.
+      this.flySpeed = clamp(this.flySpeed * Math.exp(-amount * 0.6), 0.01, 600);
+      return;
+    }
     if (this.earthView || this.riding) {
       const wide = this.riding ? this._fovBeforeRide : this._fovBeforeGround;
       const atFloor = amount < 0 && this.fov <= this.minFov * (1 + 1e-9);
@@ -466,18 +610,40 @@ export class OrbitApproachControls {
     // left the ground. The app notices by watching the flag.
     if (this.riding) this.setRiding(false);
 
-    this.mode = 'fly';
+    // Thrusting is what turns an orbit into a flight, but it must not drag a
+    // roaming camera back onto a tether it was deliberately let off.
+    if (this.mode !== 'roam') this.mode = 'fly';
     this._flight = null;
     const boost = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 4 : 1;
-    const speed = Math.max(this.altitudeKm, this.targetRadius * 0.002) * this.flySpeed * boost;
-    this.worldPosition.addScaledVector(this._forward, thrust * speed * dt);
-    this.worldPosition.addScaledVector(this._right, strafe * speed * dt);
-    this.worldPosition.addScaledVector(this._up, rise * speed * dt);
+    const speed =
+      this.mode === 'roam'
+        ? Math.max(this.roamReferenceKm, 0.02) * this.flySpeed * boost
+        : Math.max(this.altitudeKm, this.targetRadius * 0.002) * this.flySpeed * boost;
+    if (this.mode === 'roam') {
+      // Onto the offset from the anchor, not onto the absolute position, so a
+      // small step stays a small step however far from the origin we are.
+      this.roamOffset.addScaledVector(this._forward, thrust * speed * dt);
+      this.roamOffset.addScaledVector(this._right, strafe * speed * dt);
+      this.roamOffset.addScaledVector(this._up, rise * speed * dt);
+      this.worldPosition.copy(this.roamOriginPosition).add(this.roamOffset);
+    } else {
+      this.worldPosition.addScaledVector(this._forward, thrust * speed * dt);
+      this.worldPosition.addScaledVector(this._right, strafe * speed * dt);
+      this.worldPosition.addScaledVector(this._up, rise * speed * dt);
+    }
 
     const dx = this.worldPosition.x - this.targetPosition.x;
     const dy = this.worldPosition.y - this.targetPosition.y;
     const dz = this.worldPosition.z - this.targetPosition.z;
     const dist = Math.hypot(dx, dy, dz);
+    // Roaming, the distance to the target is a readout and nothing else: it is
+    // not what put the camera where it is, so clamping it would silently move
+    // the camera, and recovering the bearing from it would swing the view round
+    // to face a body the user may have turned away from on purpose.
+    if (this.mode === 'roam') {
+      this.distanceRadii = dist / Math.max(this.targetRadius, 1e-6);
+      return;
+    }
     this.distanceRadii = clamp(dist / Math.max(this.targetRadius, 1e-6), this.minDistanceRadii, this.maxDistanceRadii);
     this.pitch = Math.asin(clamp(dy / dist, -1, 1));
     this.yaw = Math.atan2(dx, dz);
@@ -626,6 +792,27 @@ export class OrbitApproachControls {
         this.worldPosition.y - targetPosition.y,
         this.worldPosition.z - targetPosition.z,
       );
+    } else if (this.mode === 'roam' && !flight) {
+      // The one branch that does not rebuild the camera's position. Everywhere
+      // else `worldPosition` is a derived quantity — target plus a bearing
+      // times a distance — which is what makes those modes orbits even when
+      // they are called flights: the target moves and the camera is carried
+      // with it, and thrust only ever edits the bearing. Here the position is
+      // the state, thrust is the only thing that changes it, and nothing is
+      // recomputed from the target at all.
+      //
+      // The view direction is `_offset` used as an aim rather than negated into
+      // a line back to the target, so yaw and pitch mean where you are looking.
+      forward = this._forward.copy(this._offset);
+      // The anchor moves — it is a planet on its orbit — so the absolute
+      // position is rebuilt from it each frame while the offset stays put. That
+      // is also what makes the offset handed out below an exact one rather than
+      // the difference of two interstellar magnitudes.
+      this.worldPosition.copy(this.roamOriginPosition).add(this.roamOffset);
+      this.originKey = this.roamOriginKey;
+      this.originOffset.copy(this.roamOffset);
+      const camDist = Math.max(this.worldPosition.distanceTo(targetPosition), 1e-9);
+      this.distanceRadii = camDist / Math.max(targetRadius, 1e-6);
     } else {
       if (!flight) {
         this.originKey = this.targetKey;
@@ -671,6 +858,10 @@ export class OrbitApproachControls {
       // correct rather than a bug: you are looking at the underside of the
       // orbit, and the view is upside down in world terms because you are.
       this._right.set(-Math.cos(this.yaw), 0, Math.sin(this.yaw));
+      // Roaming aims the forward vector along the bearing rather than back down
+      // it, which reverses the handedness of the frame built from it: without
+      // this the horizon comes out level but the sky is underneath you.
+      if (this.mode === 'roam') this._right.negate();
       if (this.bodyFrame) this._right.applyQuaternion(this.bodyFrame);
       this._right.addScaledVector(forward, -this._right.dot(forward));
       if (this._right.lengthSq() < 1e-8) this._right.set(1, 0, 0);

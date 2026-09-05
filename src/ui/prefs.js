@@ -44,8 +44,19 @@ export const DEFAULTS = {
     options: false,
     readout: true,
   },
+  // Whether the first-run card has been shown. It has to be declared here even
+  // though it starts false, because `merge` drops any saved key it does not
+  // find in these defaults — so an undeclared flag is written on dismissal,
+  // discarded on load, and the card greets you again every single visit.
+  seenIntro: false,
   collapsed: {},
-  rail: 'icons',
+  // Labelled to begin with. Eleven icons down the side of the screen are only
+  // legible to someone who already knows what they open — a compass and a
+  // planet and an eye do not say "navigation", "object" and "display" to
+  // anyone on their first visit, and a tooltip cannot be read before you have
+  // guessed which icon to hover. The rail still collapses to icons for anyone
+  // who has learned them, from the button in the top bar.
+  rail: 'labels',
   camera: {
     fov: 52,
     flySpeed: 0.55,

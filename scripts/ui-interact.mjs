@@ -32,6 +32,23 @@ page.on('dialog', async (d) => {
   await d.dismiss();
 });
 
+/*
+ * Start past the first-run welcome card. It is centred over the scene by
+ * design, and these checks drive the scene underneath it — a drag begun in the
+ * middle of the viewport would land on the card rather than the sky. A real
+ * first visit sees it; a regression check is not a first visit.
+ */
+await page.evaluateOnNewDocument(() => {
+  try {
+    const KEY = 'skyview.ui.v1';
+    const saved = JSON.parse(localStorage.getItem(KEY) || '{}');
+    saved.seenIntro = true;
+    localStorage.setItem(KEY, JSON.stringify(saved));
+  } catch {
+    /* private mode: the card will appear and the centre drags will miss. */
+  }
+});
+
 await page.goto(URL, { waitUntil: 'load', timeout: 90000 });
 await page.waitForFunction('window.cosminova && window.cosminova.ready', { timeout: 90000 });
 await frames(2);

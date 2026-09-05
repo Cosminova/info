@@ -76,8 +76,17 @@ const STAR_FRAGMENT = /* glsl */ `
     float radiusPx = vSizePx * 0.5;
     float dPx = d * radiusPx;
     float core = exp(-(dPx * dPx) / (2.0 * coreSigma * coreSigma));
-    float halo = exp(-dPx / 0.85) * 0.14;
-    float wing = exp(-dPx / max(radiusPx * 0.28, 0.5)) * 0.02;
+    // A wider, stronger skirt than the bare core had. The glow around a bright
+    // star is most of what the eye reads its brightness from, and without it
+    // every star in the field was the same two-pixel dot whatever its
+    // magnitude — a scatter of identical specks rather than a sky with an
+    // order to it.
+    float halo = exp(-dPx / 1.15) * 0.26;
+    float wing = exp(-dPx / max(radiusPx * 0.34, 0.5)) * 0.04;
+    // No diffraction spikes here, deliberately. The sky view draws them, but
+    // its sprites reach ninety pixels; the knee that keeps this field's
+    // brightest star inside a nine-pixel sprite leaves the arms nowhere to go,
+    // so they cost a branch per star and render as nothing.
     float edge = 1.0 - smoothstep(0.82, 1.0, d);
     gl_FragColor = vec4(vColor * (core + halo + wing) * edge, 1.0);
     #include <logdepthbuf_fragment>
@@ -391,12 +400,17 @@ export class DeepField {
         limitMagnitude: { value: 8 },
         exposure: { value: 1 },
         pixelRatio: { value: 1 },
-        coreSize: { value: 1.7 },
-        coreSigma: { value: 0.55 },
-        sizeExponent: { value: 0.18 },
-        maxSize: { value: Math.min(maxPointSize, 22) },
-        hdrKnee: { value: 36 },
-        gain: { value: 0.022 },
+        coreSize: { value: 2.1 },
+        coreSigma: { value: 0.62 },
+        // Size spread across magnitude. At 0.18 a first-magnitude star and a
+        // tenth-magnitude one differed by about a pixel, which is why the field
+        // read as uniform grain: the brightness hierarchy the catalogue carries
+        // was there in the data and nowhere on screen.
+        sizeExponent: { value: 0.27 },
+        maxSize: { value: Math.min(maxPointSize, 46) },
+        // Room above the knee for the bright end to actually be bright.
+        hdrKnee: { value: 190 },
+        gain: { value: 0.05 },
         hideInsideKm: { value: 2e7 },
       },
       vertexShader: STAR_VERTEX,

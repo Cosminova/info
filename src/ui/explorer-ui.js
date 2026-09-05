@@ -26,13 +26,33 @@ import { createHud, createTimeBar, createScaleBar } from './hud.js';
 import { createLabelLayer } from './labels.js';
 import { createQualityPanel } from './quality-panel.js';
 import { createFlightControls } from './flight-controls.js';
+import { createIntro } from './intro.js';
 import { VIEW_GROUPS } from './view-options.js';
 import { AU_KM, formatDistance } from '../engine/units.js';
 
 const CAMERA_MODES = [
-  { value: 'orbit', label: 'Orbit', title: 'Circle the target; drag to swing around it' },
-  { value: 'free', label: 'Free', title: 'Fly with WASD and Q/E; the view keeps its heading' },
-  { value: 'track', label: 'Track', title: 'Fly freely, but keep the target centred' },
+  {
+    value: 'orbit',
+    label: 'Orbit',
+    title: 'Circle the selected body. Drag to swing around it, scroll to close in.',
+  },
+  {
+    value: 'free',
+    label: 'Fly',
+    title: 'Thrust with WASD and Q/E, still measured from the selected body.',
+  },
+  {
+    value: 'track',
+    label: 'Track',
+    title: 'Thrust with WASD, but the view stays locked on the selected body.',
+  },
+  {
+    value: 'roam',
+    label: 'Roam',
+    title:
+      'Let go of the body entirely and fly through open space. '
+      + 'Drag turns you on the spot, the wheel sets your speed.',
+  },
 ];
 
 export function createExplorerUI(config) {
@@ -159,7 +179,11 @@ export function createExplorerUI(config) {
       type: 'button',
       class: 'btn quick',
       text: entry.name,
-      dataset: { key: entry.key },
+      // Say that clicking one travels rather than merely selecting. It is the
+      // shortest route into the scene and the one most likely to be tried
+      // first, so it should not be a button whose effect you find out by
+      // pressing it.
+      dataset: { key: entry.key, tip: `Fly to ${entry.name}` },
       onClick: () => hooks.selectTarget(entry.key, { fly: !state.viewFromEarth }),
     }));
   }
@@ -406,6 +430,16 @@ export function createExplorerUI(config) {
   });
   document.body.append(immersiveHint);
 
+  const intro = createIntro({
+    prefs,
+    // Earth rather than anywhere more spectacular: the point of the button is to
+    // demonstrate that clicking a name travels somewhere, and the destination
+    // list is right there to be tried next.
+    onStart: () => hooks.selectTarget('earth', { fly: true }),
+    onGuide: () => toggleDialog('help', true),
+  });
+  document.body.append(intro.root);
+
   // --------------------------------------------------------------------- rail
 
   const RAIL = [
@@ -413,7 +447,11 @@ export function createExplorerUI(config) {
     { id: 'navigation', label: 'Navigation', icon: 'compass', action: 'panel' },
     { id: 'camera', label: 'Camera', icon: 'camera', action: 'panel' },
     { id: 'inspector', label: 'Object', icon: 'planet', action: 'panel' },
-    { id: 'system', label: 'Planetary system', icon: 'system', action: 'panel' },
+    // `short` is what the rail shows when it is open; `label` is what the
+    // tooltip says and what the panel is called. Only one entry needs the
+    // distinction, and it needs it because the rail is now open by default and
+    // "Planetary system" is wider than the rail is worth.
+    { id: 'system', label: 'Planetary system', short: 'System', icon: 'system', action: 'panel' },
     'sep',
     { id: 'catalog', label: 'Catalog', icon: 'catalog', action: 'dialog' },
     { id: 'bookmarks', label: 'Bookmarks', icon: 'bookmark', action: 'panel' },
@@ -435,7 +473,7 @@ export function createExplorerUI(config) {
         else if (entry.action === 'panel') togglePanel(entry.id);
         else toggleDialog(entry.id);
       },
-    }, [icon(entry.icon), el('span', { class: 'rail-label', text: entry.label })]);
+    }, [icon(entry.icon), el('span', { class: 'rail-label', text: entry.short ?? entry.label })]);
     button.dataset.tip = entry.label;
     railItems.set(entry.id, button);
     return button;
@@ -482,18 +520,47 @@ export function createExplorerUI(config) {
 
   const helpKeys = el('div', { class: 'help-keys' });
   registerDialog('help', dialog({
-    title: 'Cosminova \u2014 controls',
+    title: 'Cosminova \u2014 how to get around',
     placement: 'center',
     onClose: () => toggleDialog('help', false),
     body: [
       el('div', { class: 'help-grid' }, [
         el('div', {}, [
-          el('div', { class: 'section-title', text: 'Pointer' }),
+          /*
+           * This dialog used to open on "Pointer" and a list of gestures. That
+           * tells someone who already knows what they are trying to do which
+           * button to hold; it does not tell someone who has just arrived in
+           * front of a black screen full of stars what to do first. So the
+           * first thing in it is now the shortest path to somewhere worth
+           * being, and the gestures follow.
+           */
+          el('div', { class: 'section-title', text: 'Getting somewhere' }),
+          el('p', { class: 'prose', html:
+            'Pick anything in <b>Navigation \u203a Destinations</b> and you will fly to it. '
+            + 'Or type a name into the search box at the top \u2014 any of five thousand stars, '
+            + 'the named moons, a few thousand galaxies, or a planet around another sun. '
+            + 'Everything in the scene is somewhere you can actually go.' }),
+          el('p', { class: 'prose', html:
+            'Once you are there: <b>drag</b> to swing around it, <b>scroll</b> to close in or pull back, '
+            + 'and <b>Land</b> in the Object panel to drop to the surface and stand on it.' }),
+
+          el('div', { class: 'section-title', text: 'The four camera modes' }),
+          el('p', { class: 'prose', html:
+            '<b>Orbit</b> circles whatever is selected \u2014 the mode you arrive in. '
+            + '<b>Fly</b> adds thrust on <b>W A S D</b>, still measured from that body. '
+            + '<b>Track</b> is the same but keeps the body centred while you move. '
+            + '<b>Roam</b> lets go of it completely: no target, no orbit, just open space. '
+            + 'Drag turns you on the spot, the wheel sets your speed, and how fast you go '
+            + 'scales with whatever happens to be nearest \u2014 so you slow to a crawl on '
+            + 'the way in to something and cross the system when nothing is close.' }),
+
+          el('div', { class: 'section-title', text: 'Pointer and keys' }),
           el('p', { class: 'prose', html:
             '<b>Drag</b> orbits the target. <b>Right-drag</b> or <b>shift-drag</b> looks around. '
             + '<b>Scroll</b> zooms exponentially and keeps coasting, from metres above a crater out past the Local Group. '
             + '<b>Click</b> selects and travels; <b>right-click</b> opens the object menu. '
-            + '<b>W A S D</b> with <b>Q</b>/<b>E</b> flies; speed scales with altitude and <b>shift</b> boosts.' }),
+            + '<b>W A S D</b> with <b>Q</b>/<b>E</b> flies and <b>shift</b> boosts. '
+            + 'Hover any control to be told what it does.' }),
           el('div', { class: 'section-title', text: 'What you are looking at' }),
           el('p', { class: 'prose', text:
             'One continuous scene at true scale. Surfaces are spacecraft imagery where it exists \u2014 LROC and LOLA for '
@@ -508,6 +575,18 @@ export function createExplorerUI(config) {
         el('div', {}, [
           el('div', { class: 'section-title', text: 'Keyboard \u2014 click a key to rebind' }),
           helpKeys,
+          el('div', { class: 'section' }, [
+            el('button', {
+              type: 'button',
+              class: 'btn',
+              text: 'Show the welcome card again',
+              dataset: { tip: 'The three-step card from your first visit' },
+              onClick: () => {
+                toggleDialog('help', false);
+                intro.show();
+              },
+            }),
+          ]),
         ]),
       ]),
     ],
@@ -606,10 +685,6 @@ export function createExplorerUI(config) {
         hooks.selectTarget(key, { fly: false });
         setCameraMode('orbit');
         break;
-      case 'follow':
-        hooks.selectTarget(key, { fly: false });
-        setCameraMode('orbit');
-        break;
       case 'track':
         hooks.selectTarget(key, { fly: false });
         setCameraMode('track');
@@ -639,6 +714,9 @@ export function createExplorerUI(config) {
   }
 
   function setCameraMode(mode) {
+    // Leaving roam has to hand the target back before anything else reads the
+    // distance, since roaming leaves the camera somewhere no bearing describes.
+    if (mode !== 'roam') controls.stopRoam();
     if (mode === 'orbit') {
       controls.mode = 'orbit';
       controls.trackTarget = false;
@@ -648,14 +726,19 @@ export function createExplorerUI(config) {
     } else if (mode === 'track') {
       controls.mode = 'fly';
       controls.trackTarget = true;
+    } else if (mode === 'roam') {
+      controls.trackTarget = false;
+      controls.startRoam();
     }
     modeControl.set(mode);
-    // Orbit has nothing for thrust to do, so the pad only exists in the two
-    // modes where pressing a key moves you.
+    // Orbit has nothing for thrust to do, so the pad only exists in the modes
+    // where pressing a key moves you.
     flight.setVisible(mode !== 'orbit');
+    flight.setRoaming(mode === 'roam');
   }
 
   function currentMode() {
+    if (controls.mode === 'roam') return 'roam';
     if (state.viewFromEarth) return 'orbit';
     if (controls.mode === 'fly') return controls.trackTarget ? 'track' : 'free';
     return 'orbit';
@@ -848,6 +931,7 @@ export function createExplorerUI(config) {
   shortcuts.register({ id: 'nav.goto', key: 'G', label: 'Travel to the selection', group: 'Navigation', run: () => runAction('goto') });
   shortcuts.register({ id: 'nav.orbit', key: 'O', label: 'Orbit the selection', group: 'Navigation', run: () => runAction('orbit') });
   shortcuts.register({ id: 'nav.track', key: 'T', label: 'Track the selection', group: 'Navigation', run: () => setCameraMode(currentMode() === 'track' ? 'free' : 'track') });
+  shortcuts.register({ id: 'nav.roam', key: 'R', label: 'Roam free of any target', group: 'Navigation', run: () => setCameraMode(currentMode() === 'roam' ? 'orbit' : 'roam') });
   shortcuts.register({ id: 'nav.land', key: 'L', label: 'Descend to the surface', group: 'Navigation', run: () => runAction('land') });
   shortcuts.register({ id: 'nav.bookmark', key: 'B', label: 'Bookmark the selection', group: 'Navigation', run: () => runAction('bookmark') });
 
@@ -1063,7 +1147,12 @@ export function createExplorerUI(config) {
     // controls rather than from the last button press, so the pad turns up
     // whenever thrust is live however that happened. Both calls no-op when
     // nothing has changed.
-    flight.setVisible(!state.viewFromEarth && controls.mode === 'fly');
+    // Roaming is thrust too, and this reconciliation used to name only 'fly' —
+    // so entering roam raised the pad and the next frame took it away again.
+    flight.setVisible(
+      !state.viewFromEarth && (controls.mode === 'fly' || controls.mode === 'roam'),
+    );
+    flight.setRoaming(controls.mode === 'roam');
     flight.sync();
     if (!quality.panel.root.hidden) quality.update(hooks.qualityStats?.());
 
@@ -1179,6 +1268,11 @@ export function createExplorerUI(config) {
     togglePanel,
     toggleDialog,
     focusSearch: () => search.focus(),
+    // Called once the loading screen is out of the way, so the card is not
+    // competing with a progress bar for the same middle of the screen.
+    showIntroIfNew: () => intro.maybeShow(),
+    setCameraMode,
+    currentMode,
     runAction,
     openObjectMenu,
   };

@@ -63,6 +63,9 @@ function specFromPlanet(entry, described, hostKey) {
     albedoBoost: gaseous ? 1.15 : 1.25,
     iceLatitude: described.icecapLatitude,
     palette,
+    // Zonal cloud instead of continents. Without it a giant is drawn with the
+    // blotchy field meant for rock and reads as a mottled ball.
+    banding: gaseous ? 1 : 0,
     polarSmooth: gaseous ? 1 : 0,
     seaLevelKm,
     oceanFraction,
