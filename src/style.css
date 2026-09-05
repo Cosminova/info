@@ -90,6 +90,20 @@
 .scalebar .s-track::before { left: 0; }
 .scalebar .s-track::after { right: 0; }
 
+/*
+ * The flight pad takes the bottom centre in the flying modes, which is where
+ * the scale bar sits. The bar moves rather than the pad, because the pad is a
+ * control that wants to be near the readouts it changes and the bar is only a
+ * legend — it reads the same anywhere along the bottom.
+ */
+body.is-flying .scalebar {
+  bottom: calc(var(--edge) + 122px * var(--ui-scale));
+}
+
+.scalebar {
+  transition: bottom var(--t-fast) var(--ease);
+}
+
 /* ------------------------------------------------------- panel internals */
 
 /* Destination shortcuts. A wrapping row of small chips rather than a list: there

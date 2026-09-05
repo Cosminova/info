@@ -25,6 +25,7 @@ import { createInspector, describe } from './inspector.js';
 import { createHud, createTimeBar, createScaleBar } from './hud.js';
 import { createLabelLayer } from './labels.js';
 import { createQualityPanel } from './quality-panel.js';
+import { createFlightControls } from './flight-controls.js';
 import { VIEW_GROUPS } from './view-options.js';
 import { AU_KM, formatDistance } from '../engine/units.js';
 
@@ -394,7 +395,10 @@ export function createExplorerUI(config) {
       onClick: () => toggleDialog('help'),
     }),
   ]);
-  append(regionBottom, [hud.root, bottomRight]);
+  // Between the readouts and the buttons, so switching to a flight mode makes
+  // the controls appear next to the speed and altitude they change.
+  const flight = createFlightControls({ controls, prefs });
+  append(regionBottom, [hud.root, flight.root, bottomRight]);
 
   const immersiveHint = el('div', {
     class: 'immersive-hint',
@@ -646,6 +650,9 @@ export function createExplorerUI(config) {
       controls.trackTarget = true;
     }
     modeControl.set(mode);
+    // Orbit has nothing for thrust to do, so the pad only exists in the two
+    // modes where pressing a key moves you.
+    flight.setVisible(mode !== 'orbit');
   }
 
   function currentMode() {
@@ -1051,6 +1058,13 @@ export function createExplorerUI(config) {
     scaleBar.update(controls.distanceKm);
     timeBar.frame();
     modeControl.set(currentMode());
+    // The mode can change without the mode control being touched: thrusting
+    // from orbit switches to flight, and so does F. Reconciled from the
+    // controls rather than from the last button press, so the pad turns up
+    // whenever thrust is live however that happened. Both calls no-op when
+    // nothing has changed.
+    flight.setVisible(!state.viewFromEarth && controls.mode === 'fly');
+    flight.sync();
     if (!quality.panel.root.hidden) quality.update(hooks.qualityStats?.());
 
     // The inspector's numbers move; its structure does not. Rebuild the

@@ -242,6 +242,37 @@ export class OrbitApproachControls {
     window.addEventListener('keyup', (event) => {
       this._keys.delete(event.code);
     });
+    // A key still down when the window loses focus never gets its keyup, and
+    // the camera would go on thrusting in that direction indefinitely — which
+    // looks less like a stuck key than like a camera that has run away on its
+    // own. Coming back to a window that is flying itself is the same problem in
+    // reverse, so the set is emptied on the way out.
+    window.addEventListener('blur', () => this._keys.clear());
+  }
+
+  /**
+   * Press or release a movement input from something that is not the keyboard.
+   *
+   * The on-screen flight controls go through here rather than moving the camera
+   * themselves, so that thrust, its altitude-proportional speed, the boost
+   * multiplier and the switch out of orbit mode all stay in one place and
+   * cannot drift apart from what the keys do. `code` is a
+   * `KeyboardEvent.code` — the buttons are labelled with the key they stand in
+   * for, so the mapping is the same thing the user is being taught.
+   */
+  setInput(code, active) {
+    if (active) this._keys.add(code);
+    else this._keys.delete(code);
+  }
+
+  /** Release every movement input. Used when the controls go out of view. */
+  clearInputs() {
+    this._keys.clear();
+  }
+
+  /** Whether a movement input is currently held, from either source. */
+  isInputDown(code) {
+    return this._keys.has(code);
   }
 
   _handlePinch() {

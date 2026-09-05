@@ -132,7 +132,23 @@ Flying (`index.html`):
 | Click | Select what is under the cursor |
 | Right-click | Object menu — go to, orbit, follow, track, land, find parent or moons |
 | `G` `O` `T` `L` | Go to, orbit, track, land on the selection |
+| `W` `S` | Thrust along the view; `A` `D` slide across it |
+| `E` `Q` | Climb and dive |
+| `Shift` | Four times the speed, held |
+| `F` | Swap between orbiting the target and flying free of it |
 | Space, arrows, `N` | Pause, step the rate, jump to now |
+
+Thrust goes wherever the camera is pointing, not towards the target, so drag to
+aim and then hold `W`. Speed is proportional to your altitude — metres per
+second on a surface and a good fraction of a light year out in the halo —
+because a single fixed speed cannot serve a scene thirteen orders of magnitude
+deep.
+
+Pressing any of those switches the camera out of orbit by itself, so flying
+does not have to be armed first. Choosing **Free** or **Track** under camera
+mode does the same thing deliberately, and brings up an on-screen pad laid out
+the way the keys sit under your left hand — usable with the mouse alone, and
+there mostly so that the keys above are discoverable without reading this.
 
 From the ground (`sky.html`):
 
@@ -671,6 +687,21 @@ something scrolls to bring it back. It also reports console errors and the frame
 cost of the interface, though on a software renderer the scene dominates so
 heavily that the percentage is noise; it says so when that is the case.
 
+`flight-check.mjs` covers free flight and the pad that advertises it:
+
+```bash
+npm run check:flight
+```
+
+Most of it is interface — the pad appears in the flying modes and not in orbit,
+holding a button moves the camera and releasing it stops, a key press lights
+the matching button, and nothing is left holding thrust down when the pad goes
+away. The last assertion is about the flight model instead, and is the one
+worth keeping: it turns the view ninety degrees off the target before
+thrusting, and fails if the camera closes on the target anyway. That is the
+difference between flying and being reeled in, and it is invisible in any test
+that thrusts while already pointed at something.
+
 `ui-interact.mjs` and `sky-interact.mjs` drive what a screenshot cannot show:
 immersive mode, panel collapse, rebinding a key and confirming the old one stops
 working, the time controller reaching reverse, right-click picking, and
@@ -778,7 +809,9 @@ fragment. Chrome is a real browser with real cookies and simply plays the thing.
 - Moons follow circular orbits about their primaries rather than full theories.
 - Close-range views cost the most: the crater field is evaluated per fragment,
   and a few kilometres above the surface is the slowest case by a wide margin.
-- No free-flight camera; the camera always orbits a target or rides a spacecraft.
+- The camera still keeps a target even in free flight: thrust goes wherever you
+  are looking and nothing pulls you back, but distance and bearing are held
+  relative to the selected body, so there is no such thing as being nowhere.
 - Spacecraft attitude is illustrative: nose along the track, panels towards the
   Sun. Real pointing histories are published for very few missions and are not
   in Horizons.
