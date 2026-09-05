@@ -54,8 +54,10 @@ for (const [label, width, height] of [
       window.scrollTo(0, y);
       await new Promise((r) => setTimeout(r, 150));
     }
-    window.scrollTo(0, 0);
-    await new Promise((r) => setTimeout(r, 300));
+    // Instant, not smooth. The page sets scroll-behavior: smooth, so a plain
+    // scrollTo animates and the capture lands somewhere mid-page.
+    window.scrollTo({ top: 0, behavior: 'instant' });
+    await new Promise((r) => setTimeout(r, 400));
   });
 
   // Walking the page starts the lazy loads but does not finish them, and a
