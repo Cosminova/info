@@ -140,16 +140,13 @@ h3 {
   font-weight: 600;
 }
 
-/* A small limb-lit disc: the logo is the same idea as the product. */
-/* The mark itself, from the same file the favicon is built from, so the header
-   and the browser tab are the same shape. Sized a little larger than the old
-   CSS dot because the terminator needs the pixels to read as a sphere. */
-/* The reduced mark, not the detailed one: at this size the second torus band
-   and the jet taper only muddy it. */
+/* The mark, from the same master the tab icon is built from, so the header and
+   the browser tab are the same picture. A 128 px raster drawn at 22 so it
+   stays sharp past 2x. */
 .nav__mark {
   width: 22px;
   height: 22px;
-  background: url('assets/logo-small.svg') center / contain no-repeat;
+  background: url('assets/logo.png') center / contain no-repeat;
   flex: none;
 }
 

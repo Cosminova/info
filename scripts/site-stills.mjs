@@ -51,12 +51,16 @@ const SHOTS = [
 
   // Opens on the black hole. It is the least familiar thing in the app and the
   // one nobody expects a browser to be drawing, so it earns the first frame.
+  // M87 rather than Sagittarius A* because it comes with a jet, which is what
+  // makes it read as a black hole rather than as a bright smear.
   //
-  // Close in, at about twenty Schwarzschild radii. Further out it is
-  // technically the same object but photographically a smudge in an empty
-  // frame — the lensed disc only wraps the shadow legibly from close up. See
-  // scripts/_frame-probe.mjs for the sweep this came from.
-  { group: 'hero', name: 'sgr-a', hole: { key: 'sgr-a', distanceRadii: 22 }, fov: 38 },
+  // Around thirty Schwarzschild radii, which is a compromise the other black
+  // hole shots do not have to make. Closer, at twenty, the lensed disc fills
+  // the whole frame with pale grey and the shadow stops reading as a shape —
+  // fine as a picture on its own, but this one sits behind white type. Much
+  // further out and it is a smudge in an empty frame. See
+  // scripts/_frame-probe.mjs for the sweep.
+  { group: 'hero', name: 'm87', hole: { key: 'm87-star', distanceRadii: 30 }, fov: 38 },
   // Then the two the solar system is famous for. Saturn at a high sun and a
   // rolled tilt is the one composition that gets the ring shadow onto the globe
   // and the globe's shadow into the rings, which is the whole point of it.
@@ -80,7 +84,6 @@ const SHOTS = [
   // scrim then crushes what little there was. Earth at a low sun fills the
   // frame with graded sky instead. Mars keeps its slot in the gallery.
   { group: 'hero', name: 'earth-ground', stand: { body: 'earth', sunElevationDeg: 0.6, altitudeKm: 2.5, viewElevationDeg: 7 }, detail: 'earth', fov: 58 },
-  { group: 'hero', name: 'm87', hole: { key: 'm87-star', distanceRadii: 22 }, fov: 38 },
 
   /* ------------------------------------------------------------- feature */
 

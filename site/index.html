@@ -21,15 +21,16 @@
     <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
 
-    <!-- The SVG is what any current browser uses; the 32 px raster is there for
-         the ones that still want a bitmap, and the 180 for a home screen. All
-         four come out of `node scripts/build-logo.mjs`. -->
-    <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
+    <!-- Rasters rather than an SVG: the mark is a photographic render, not a
+         glyph, so there is nothing to vectorise without drawing a different
+         picture. Two tab sizes so the browser downscales from the nearer one,
+         and the 180 for a home screen. All from `node scripts/build-logo.mjs`. -->
+    <link rel="icon" href="assets/icon-16.png" sizes="16x16" type="image/png" />
     <link rel="icon" href="assets/icon-32.png" sizes="32x32" type="image/png" />
     <link rel="apple-touch-icon" href="assets/icon-180.png" />
     <!-- The first slide only. The other seven are fetched by main.js as their
          turn comes, which is what keeps the hero off the critical path. -->
-    <link rel="preload" as="image" href="assets/hero/sgr-a.jpg" fetchpriority="high" />
+    <link rel="preload" as="image" href="assets/hero/m87.jpg" fetchpriority="high" />
     <link rel="stylesheet" href="styles.css" />
   </head>
 
@@ -60,23 +61,24 @@
           the ground. One picture can only make one of those claims.
 
           Only the first frame has a src. The rest carry data-src and are
-          fetched by main.js just before their turn, which keeps seven images
-          off the critical path — without that the hero costs about 600 KB
-          before the title paints. With scripting off the first frame simply
-          stays, which is the same behaviour the video had with its poster.
+          fetched by main.js just before their turn, which keeps six images off
+          the critical path — without that the hero costs around half a
+          megabyte before the title paints. With scripting off the first frame
+          simply stays, which is the same behaviour the video had with its
+          poster.
         -->
         <div class="hero__media">
           <div class="hero__slides" aria-hidden="true">
             <img
               class="hero__slide is-active"
-              src="assets/hero/sgr-a.jpg"
+              src="assets/hero/m87.jpg"
               alt=""
               width="1600"
               height="900"
               fetchpriority="high"
               decoding="async"
-              data-title="Sagittarius A*"
-              data-note="Four million suns in a point, and the ring is light from behind it"
+              data-title="M87*"
+              data-note="The disc lensed into a ring around the shadow, and a jet along the pole"
             />
             <img class="hero__slide" data-src="assets/hero/saturn.jpg" alt="" width="1600" height="900" decoding="async"
               data-title="Saturn" data-note="The ring shadow on the globe, and the globe's shadow in the rings" />
@@ -90,8 +92,6 @@
               data-title="The Sun" data-note="Granulation and limb glow, from eight solar radii out" />
             <img class="hero__slide" data-src="assets/hero/sirius.jpg" alt="" width="1600" height="900" decoding="async"
               data-title="Sirius" data-note="Radius from luminosity, colour from temperature" />
-            <img class="hero__slide" data-src="assets/hero/m87.jpg" alt="" width="1600" height="900" decoding="async"
-              data-title="M87*" data-note="A relativistic jet, launched along the pole" />
           </div>
           <div class="hero__scrim" aria-hidden="true"></div>
         </div>
