@@ -27,3 +27,10 @@ video/
 # Raw catalogues (~60 MB) are inputs to `npm run build:data`; the committed
 # assets under public/data and public/textures are what the app actually loads.
 data-src/
+
+# Xcode. The project and the sources are committed; build output and the
+# per-developer window and scheme state are not. `macos/build` is the derived
+# data path the build command uses, which puts a 163 MB app bundle there.
+macos/build/
+xcuserdata/
+*.xcuserstate

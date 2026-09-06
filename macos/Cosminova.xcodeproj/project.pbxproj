@@ -1,0 +1,281 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		CB0A00000000000000000016 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0A00000000000000000011 /* AppDelegate.swift */; };
+		CB0A00000000000000000017 /* MainMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0A00000000000000000012 /* MainMenu.swift */; };
+		CB0A00000000000000000018 /* WebAssetSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB0A00000000000000000013 /* WebAssetSchemeHandler.swift */; };
+		CB0A00000000000000000019 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CB0A00000000000000000015 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		CB0A00000000000000000006 /* Cosminova.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Cosminova.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CB0A00000000000000000011 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		CB0A00000000000000000012 /* MainMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainMenu.swift; sourceTree = "<group>"; };
+		CB0A00000000000000000013 /* WebAssetSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAssetSchemeHandler.swift; sourceTree = "<group>"; };
+		CB0A00000000000000000014 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		CB0A00000000000000000015 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CB0A0000000000000000000F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		CB0A00000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				CB0A00000000000000000003 /* Cosminova */,
+				CB0A00000000000000000004 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CB0A00000000000000000003 /* Cosminova */ = {
+			isa = PBXGroup;
+			children = (
+				CB0A00000000000000000011 /* AppDelegate.swift */,
+				CB0A00000000000000000012 /* MainMenu.swift */,
+				CB0A00000000000000000013 /* WebAssetSchemeHandler.swift */,
+				CB0A00000000000000000015 /* Assets.xcassets */,
+				CB0A00000000000000000014 /* Info.plist */,
+			);
+			path = Cosminova;
+			sourceTree = "<group>";
+		};
+		CB0A00000000000000000004 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CB0A00000000000000000006 /* Cosminova.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		CB0A00000000000000000005 /* Cosminova */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CB0A00000000000000000008 /* Build configuration list for PBXNativeTarget "Cosminova" */;
+			buildPhases = (
+				CB0A0000000000000000000E /* Sources */,
+				CB0A0000000000000000000F /* Frameworks */,
+				CB0A00000000000000000010 /* Resources */,
+				CB0A0000000000000000000D /* Build and stage the web app */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Cosminova;
+			productName = Cosminova;
+			productReference = CB0A00000000000000000006 /* Cosminova.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CB0A00000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					CB0A00000000000000000005 = {
+						CreatedOnToolsVersion = 16.0;
+					};
+				};
+			};
+			buildConfigurationList = CB0A00000000000000000007 /* Build configuration list for PBXProject "Cosminova" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = CB0A00000000000000000002;
+			productRefGroup = CB0A00000000000000000004 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				CB0A00000000000000000005 /* Cosminova */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		CB0A00000000000000000010 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CB0A00000000000000000019 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		CB0A0000000000000000000D /* Build and stage the web app */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Build and stage the web app";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Builds the renderer and puts it inside the bundle.\n#\n# The web app is a Vite build and Xcode knows nothing about npm, so this is\n# the seam between the two. It runs after the Resources phase rather than\n# before it, so that what it writes is in place when the bundle is signed.\n\nset -euo pipefail\n\nROOT=\"${SRCROOT}/..\"\nDEST=\"${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/web\"\n\n# Build phases get a PATH with none of the usual places a Node lives on it, so\n# an npm that works perfectly in the developer's shell is invisible here\n# unless it is put back.\nexport PATH=\"/opt/homebrew/bin:/usr/local/bin:$HOME/.volta/bin:/usr/bin:/bin:$PATH\"\nif [ -s \"$HOME/.nvm/nvm.sh\" ]; then . \"$HOME/.nvm/nvm.sh\" >/dev/null 2>&1 || true; fi\n\nif ! command -v npm >/dev/null 2>&1; then\n  echo \"error: npm is not on PATH, so the renderer cannot be built. Install Node, or run 'npm run build' in the repository root and build again.\"\n  exit 1\nfi\n\ncd \"$ROOT\"\n[ -d node_modules ] || npm ci\nnpm run build\n\nif [ ! -f dist/index.html ]; then\n  echo \"error: npm run build finished but dist/index.html is not there.\"\n  exit 1\nfi\n\nmkdir -p \"$DEST\"\n# --delete so that an asset removed from the build does not linger in the\n# bundle from an earlier one. Incremental, which matters: this is 176 MB.\nrsync -a --delete dist/ \"$DEST/\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		CB0A0000000000000000000E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CB0A00000000000000000016 /* AppDelegate.swift in Sources */,
+				CB0A00000000000000000017 /* MainMenu.swift in Sources */,
+				CB0A00000000000000000018 /* WebAssetSchemeHandler.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		CB0A00000000000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		CB0A0000000000000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		CB0A0000000000000000000B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Cosminova/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cosminova.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		CB0A0000000000000000000C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "-";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Cosminova/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.cosminova.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		CB0A00000000000000000007 /* Build configuration list for PBXProject "Cosminova" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CB0A00000000000000000009 /* Debug */,
+				CB0A0000000000000000000A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CB0A00000000000000000008 /* Build configuration list for PBXNativeTarget "Cosminova" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CB0A0000000000000000000B /* Debug */,
+				CB0A0000000000000000000C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CB0A00000000000000000001 /* Project object */;
+}

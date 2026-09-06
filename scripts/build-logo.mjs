@@ -80,6 +80,43 @@ const appIcon = path.join(APP, 'favicon.png');
 await sharp(MASTER).resize(64, 64, { kernel: 'lanczos3' }).png({ compressionLevel: 9 }).toFile(appIcon);
 wrote('public/favicon.png', appIcon);
 
+/* ------------------------------------------------------------ the Mac app */
+
+/*
+ * The icon set the macOS target compiles into Assets.car, from the same master
+ * again, and full bleed like the rest.
+ *
+ * Full bleed took a correction. The old advice is to leave a margin, because
+ * the classic Mac icon is art floating on a transparent tile at about 80% of
+ * its width, and that is what this drew first. On macOS 26 it comes out inset
+ * twice: the system now masks every icon to its own rounded square and fills
+ * what is left, so a pre-padded image lands as a small picture adrift on a
+ * pale plate. Handing over the whole frame lets the mask do the shaping, which
+ * is what it is for.
+ */
+const ICONSET = path.resolve('macos/Cosminova/Assets.xcassets/AppIcon.appiconset');
+if (fs.existsSync(path.dirname(ICONSET))) {
+  fs.mkdirSync(ICONSET, { recursive: true });
+  // Every logical size at 1x and 2x, which is the set macOS asks for.
+  const points = [16, 32, 128, 256, 512];
+  const pixels = [...new Set(points.flatMap((pt) => [pt, pt * 2]))].sort((a, b) => a - b);
+  for (const px of pixels) {
+    await sharp(MASTER)
+      .resize(px, px, { kernel: 'lanczos3' })
+      .png({ compressionLevel: 9 })
+      .toFile(path.join(ICONSET, `icon_${px}.png`));
+  }
+  const images = points.flatMap((pt) => [
+    { size: `${pt}x${pt}`, idiom: 'mac', filename: `icon_${pt}.png`, scale: '1x' },
+    { size: `${pt}x${pt}`, idiom: 'mac', filename: `icon_${pt * 2}.png`, scale: '2x' },
+  ]);
+  fs.writeFileSync(
+    path.join(ICONSET, 'Contents.json'),
+    `${JSON.stringify({ images, info: { version: 1, author: 'xcode' } }, null, 2)}\n`,
+  );
+  console.log(`  ${'macos AppIcon.appiconset'.padEnd(30)} ${String(pixels.length).padStart(6)} sizes`);
+}
+
 /* -------------------------------------------------------------- the card */
 
 /*
