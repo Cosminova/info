@@ -141,12 +141,13 @@ h3 {
 }
 
 /* A small limb-lit disc: the logo is the same idea as the product. */
+/* The mark itself, from the same file the favicon is built from, so the header
+   and the browser tab are the same shape. Sized a little larger than the old
+   CSS dot because the terminator needs the pixels to read as a sphere. */
 .nav__mark {
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 32% 30%, var(--amber-hot), #6d3d16 62%, #150c06 100%);
-  box-shadow: 0 0 14px var(--amber-glow);
+  width: 20px;
+  height: 20px;
+  background: url('assets/logo.svg') center / contain no-repeat;
   flex: none;
 }
 
