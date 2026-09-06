@@ -26,13 +26,24 @@ const APPS = {
   explorer: {
     page: '',
     panels: ['navigation', 'camera', 'display', 'inspector', 'system', 'bookmarks'],
-    query: 'tit',
+    /*
+     * One letter, which is the query that matters here.
+     *
+     * This used to be 'tit', and three characters into a twelve-thousand-entry
+     * catalogue is a short list — four or five rows, which fit in the box
+     * whatever the box is doing. So the overhang check below, which has always
+     * included `.search-results`, was being handed the one case that could not
+     * fail. A single letter fills the list to its cap instead, which is what a
+     * person types first and what showed the results running off the bottom of
+     * the screen.
+     */
+    query: 'f',
     // The explorer's search and context menu are driven through its own API.
     openExtras: async (page) => {
       await page.evaluate(() => {
         window.cosminova.ui.focusSearch();
         const input = document.querySelector('.search-input');
-        input.value = 'tit';
+        input.value = 'f';
         input.dispatchEvent(new Event('input', { bubbles: true }));
       });
       await new Promise((resolve) => setTimeout(resolve, 400));
@@ -239,9 +250,30 @@ await page.evaluateOnNewDocument(() => {
     const out = [];
     for (const node of document.querySelectorAll('.search-results, .menu')) {
       if (node.hidden) continue;
+      const name = node.className.split(' ')[0];
       const r = node.getBoundingClientRect();
       if (r.left < -1 || r.top < -1 || r.right > window.innerWidth + 1 || r.bottom > window.innerHeight + 1) {
-        out.push(`${node.className.split(' ')[0]} ${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.right)},${Math.round(r.bottom)}`);
+        out.push(`${name} ${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.right)},${Math.round(r.bottom)}`);
+      }
+      /*
+       * And the contents, which is the half this check was missing.
+       *
+       * A `max-height` caps the box, so the rect above stayed inside the window
+       * while sixty result rows were laid out straight through the bottom of it
+       * and on down past the edge of the screen. Measuring the box could not see
+       * that, and measuring the rows cannot be done on its own either: in a list
+       * that scrolls properly, everything below the fold is outside the box by
+       * design and its rects say so. What separates the two is whether the box
+       * scrolls at all.
+       */
+      const scrolls = ['auto', 'scroll', 'hidden'].includes(getComputedStyle(node).overflowY);
+      const spill = node.scrollHeight - node.clientHeight;
+      if (!scrolls && spill > 1) {
+        const last = node.lastElementChild?.getBoundingClientRect();
+        out.push(
+          `${name} spills ${Math.round(spill)}px past its ${Math.round(node.clientHeight)}px box`
+          + `${last ? `, last row at ${Math.round(last.bottom)} of ${window.innerHeight}` : ''}`,
+        );
       }
     }
     return out;

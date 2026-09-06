@@ -890,6 +890,17 @@ input[type='datetime-local'] {
   width: calc(420px * var(--ui-scale));
   max-width: min(calc(420px * var(--ui-scale)), calc(100vw - 2 * var(--edge)));
   max-height: min(60vh, calc(520px * var(--ui-scale)));
+  /* The list scrolls at that height instead of running past it.
+     `max-height` on its own caps the box and nothing else: sixty rows kept
+     being laid out below it, over the scene, past the bottom of the window and
+     with the panel's border and background ending in the middle of them. A
+     one-letter query is enough to do it, so this was most of what search looked
+     like. The dock panels are capped the same way — see .panel-dock
+     .panel-body. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-2) transparent;
   background: var(--surface-3);
   border: 1px solid var(--line-2);
   border-radius: var(--r-2);
