@@ -93,23 +93,57 @@ for (const [label, width, height] of [
 
 // The two buttons, which are the point of the page.
 const buttons = await page.evaluate(() => {
-  const win = document.querySelector('a[data-download="windows"][href^="http"]');
+  const wins = [...document.querySelectorAll('a[data-download="windows"]')];
   const mac = [...document.querySelectorAll('button.btn')].find((b) =>
     b.textContent.toLowerCase().includes('macos'),
   );
   return {
-    windowsHref: win?.getAttribute('href') ?? null,
+    windowsHrefs: wins.map((a) => a.getAttribute('href')),
     macDisabled: mac ? mac.disabled : null,
     macIsButton: mac ? mac.tagName === 'BUTTON' : null,
     macHasHref: mac ? mac.hasAttribute('href') : null,
   };
 });
 
+/*
+ * Every Windows button has to go straight at the installer.
+ *
+ * Checking the href merely contains "releases" is what this used to do, and it
+ * would have passed a link to the releases page, a link that only scrolls down
+ * the page, and a link naming an asset that no longer exists. All three are
+ * the bug: someone clicks Download and does not get a download.
+ */
+const EXPECTED = 'https://github.com/Cosminova/info/releases/latest/download/Cosminova-Setup.exe';
+
 check(
-  'the Windows button points at a release',
-  /github\.com\/.+\/releases/.test(buttons.windowsHref ?? ''),
-  buttons.windowsHref ?? 'no href found',
+  'both Windows buttons exist and download the installer directly',
+  buttons.windowsHrefs.length === 2 && buttons.windowsHrefs.every((h) => h === EXPECTED),
+  buttons.windowsHrefs.join(' , ') || 'none found',
 );
+
+/*
+ * And the link has to actually resolve to a file. This is the failure mode the
+ * version-less asset name exists to prevent, and it is invisible from the
+ * markup: the href stays valid-looking forever while GitHub starts returning a
+ * 404 the moment the asset it names stops existing.
+ *
+ * Content-Disposition is checked too, because a 200 that renders as a page is
+ * still "took me to GitHub" from the visitor's side.
+ */
+try {
+  const head = await fetch(EXPECTED, { method: 'HEAD', redirect: 'follow' });
+  const disposition = head.headers.get('content-disposition') ?? '';
+  const megabytes = Number(head.headers.get('content-length') ?? 0) / 1024 / 1024;
+  check(
+    'the installer link resolves to a downloadable file',
+    head.ok && disposition.includes('attachment'),
+    `http ${head.status}, ${disposition || 'no content-disposition'}, ${megabytes.toFixed(0)} MB`,
+  );
+} catch (error) {
+  // Offline is not a finding about the page, so it is reported rather than
+  // failed — a green run that only means "no network" would be worse.
+  console.log(`skip  the installer link resolves  ${error.message}`);
+}
 check('the macOS button is disabled', buttons.macDisabled === true);
 check(
   'the macOS button cannot navigate',

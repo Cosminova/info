@@ -106,7 +106,14 @@
           </p>
 
           <div class="actions" id="hero-actions">
-            <a class="btn btn--primary" href="#download" data-download="windows">
+            <!-- Downloads, rather than scrolling to the section that downloads.
+                 A button that says "Download for Windows" and moves the page
+                 instead is a bait and switch. -->
+            <a
+              class="btn btn--primary"
+              href="https://github.com/Cosminova/info/releases/latest/download/Cosminova-Setup.exe"
+              data-download="windows"
+            >
               <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path
                   fill="currentColor"
@@ -115,7 +122,7 @@
               </svg>
               <span class="btn__text">
                 <strong>Download for Windows</strong>
-                <small>64-bit installer</small>
+                <small>64-bit installer · 228 MB</small>
               </span>
             </a>
 
@@ -522,9 +529,20 @@
             </p>
 
             <div class="actions">
+              <!--
+                Straight at the installer, not at the releases page. GitHub
+                serves this with Content-Disposition: attachment, so a click
+                starts the download rather than navigating anywhere.
+
+                The asset name deliberately carries no version, which is what
+                makes /releases/latest/download/ a permanent link — with
+                Cosminova-Setup-1.0.0.exe in it, this would 404 the day a
+                second release is cut. package.json's build.win.artifactName
+                is what keeps the built file matching.
+              -->
               <a
                 class="btn btn--primary"
-                href="https://github.com/cosminova/info/releases/latest"
+                href="https://github.com/Cosminova/info/releases/latest/download/Cosminova-Setup.exe"
                 data-download="windows"
               >
                 <svg class="btn__icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -535,7 +553,7 @@
                 </svg>
                 <span class="btn__text">
                   <strong>Download for Windows</strong>
-                  <small>64-bit installer</small>
+                  <small>64-bit installer · 228 MB</small>
                 </span>
               </a>
 

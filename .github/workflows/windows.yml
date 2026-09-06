@@ -46,8 +46,11 @@ jobs:
           path: release/*.exe
           if-no-files-found: error
 
-      # Only tag pushes produce a release. The site's download button points at
-      # /releases/latest, so this is what makes that link resolve.
+      # Only tag pushes produce a release. The site's download button points
+      # straight at /releases/latest/download/Cosminova-Setup.exe, so this is
+      # what makes that link resolve — and it only resolves because the
+      # artifact name carries no version. If build.win.artifactName in
+      # package.json ever goes back to embedding ${version}, that button 404s.
       - name: Attach the installer to the release
         if: startsWith(github.ref, 'refs/tags/')
         shell: bash
