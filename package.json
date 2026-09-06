@@ -37,7 +37,8 @@
     "check:drag": "node scripts/drag-check.mjs",
     "check:star": "node scripts/star-check.mjs",
     "check:zoom": "node scripts/zoom-check.mjs",
-    "check:relief": "node scripts/relief-check.mjs mars && node scripts/relief-check.mjs moon"
+    "check:relief": "node scripts/relief-check.mjs mars && node scripts/relief-check.mjs moon",
+    "check:glare": "node scripts/craft-glare-check.mjs"
   },
   "keywords": [],
   "author": "",
@@ -70,7 +71,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "artifactName": "Cosminova-Setup.${ext}"

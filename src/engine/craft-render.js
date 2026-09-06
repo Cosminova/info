@@ -45,6 +45,32 @@ const MAX_MARKERS = 256;
 const MESH_FADE_IN = 1.2;
 const MESH_FADE_OUT = 3.5;
 
+/*
+ * How bright a marker may be: at the top, a craft on the edge of resolving,
+ * and at the bottom, everything too far away for its size to mean anything.
+ *
+ * A marker used to hold one brightness, 0.85, at every distance. That made a
+ * few metres of foil the most conspicuous thing in the sky — measured against
+ * the star pixels of the same frame, craft came out above the brightest one
+ * per cent of stars while the median star sat at 13 of 255 — and it put the
+ * ordering backwards, since the stars dim with distance and the markers did
+ * not, so the further off a probe was the more it stood out.
+ *
+ * The floor is the number that matters, and it is set by eye against the star
+ * field rather than derived from anything. Apparent sizes out here are
+ * hopeless as a brightness cue: the ISS from forty Earth radii is 5e-4 px
+ * across and New Horizons is 2e-10, so a scale honest about flux would put
+ * every craft at zero and answer "where is Voyager" with an empty sky. A tool
+ * for finding spacecraft cannot do that, so a marker is a navigation aid held
+ * at a fixed dim level, and the job of the level is to sit under the stars.
+ *
+ * The falloff between the two earns its place only across the handoff, where
+ * it stops the marker popping as the mesh comes up. Everywhere else — which is
+ * to say almost everywhere — a craft sits on the floor.
+ */
+const MARKER_MAX_ALPHA = 0.5;
+const MARKER_MIN_ALPHA = 0.1;
+
 const MARKER_VERTEX = /* glsl */`
   #include <common>
   #include <logdepthbuf_pars_vertex>
@@ -363,7 +389,12 @@ export function createCraftRenderer(field) {
           mesh.position.copy(rel);
           mesh.quaternion.copy(state.orientation);
         }
-        const markerAlpha = (1 - meshFade) * 0.85;
+        // Squared, because that is how the flux from a lit object falls; the
+        // ratio is against the size at which the mesh takes over, so the
+        // marker is at its brightest exactly where it hands off.
+        const flux = Math.min(1, (apparent / MESH_FADE_IN) ** 2);
+        const reach = MARKER_MIN_ALPHA + (MARKER_MAX_ALPHA - MARKER_MIN_ALPHA) * flux;
+        const markerAlpha = (1 - meshFade) * reach;
         detail.set(state.key, { distance, apparent, meshFade, markerAlpha });
         if (markerAlpha > 0.01) {
           const selected = state.key === selectedKey;
@@ -371,7 +402,12 @@ export function createCraftRenderer(field) {
             rel,
             tintFor(state.spec.kind),
             selected ? 5 : 2.6,
-            selected ? Math.max(markerAlpha, 0.55) : markerAlpha,
+            // The selected craft keeps a floor of its own: it is the one thing
+            // the user has asked to see and losing it in the field would be no
+            // help. Held at the marker maximum rather than above it, though,
+            // so being selected no longer makes a craft brighter than one
+            // close enough to resolve.
+            selected ? Math.max(markerAlpha, MARKER_MAX_ALPHA) : markerAlpha,
           );
         }
       }

@@ -433,7 +433,11 @@ check('marker gone once the mesh is readable', lod.near.markerAlpha < 0.01,
   `marker alpha ${lod.near.markerAlpha.toFixed(3)}`);
 check('mesh dropped at distance', lod.far.meshFade < 0.01 && !lod.far.meshInScene,
   `${lod.far.apparent.toFixed(4)} px across`);
-check('marker carries it at distance', lod.far.markerAlpha > 0.5,
+// Present, but no more than that. This used to demand more than 0.5, which is
+// the setting that made a distant craft brighter than almost every star in the
+// frame; the bound is now the dim floor markers sit on, checked at both ends
+// so the marker can neither vanish nor grow back into a beacon.
+check('marker carries it at distance', lod.far.markerAlpha > 0.05 && lod.far.markerAlpha < 0.15,
   `marker alpha ${lod.far.markerAlpha.toFixed(3)}`);
 check('the two cross over rather than switching',
   lod.mid.meshFade > 0.01 && lod.mid.meshFade < 0.99 && lod.mid.markerAlpha > 0.01,
