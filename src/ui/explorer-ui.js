@@ -921,6 +921,12 @@ export function createExplorerUI(config) {
   shortcuts.register({ id: 'open.display', key: 'F9', label: 'Display panel', group: 'Interface', run: () => togglePanel('display') });
   shortcuts.register({ id: 'open.settings', key: 'F10', label: 'Interface settings', group: 'Interface', run: () => toggleDialog('settings') });
   shortcuts.register({ id: 'toggle.immersive', key: 'F11', label: 'Immersive mode', group: 'Interface', allowInInput: true, run: () => setImmersive(!isImmersive()) });
+  // Music had only the checkbox in the Display panel, which is behind F9 — so
+  // on a Mac, where F9 is a volume key unless the user has been told
+  // otherwise, the way to turn the music off was unreachable by keyboard. It
+  // goes through setViewOption rather than straight to the hook so the
+  // checkbox and the saved preference follow.
+  shortcuts.register({ id: 'toggle.music', key: 'F12', label: 'Music', group: 'Interface', run: () => setViewOption('music', !prefs.get('view.music', true)) });
   shortcuts.register({ id: 'toggle.hud', key: 'H', label: 'Bottom readouts', group: 'Interface', run: () => { prefs.toggle('hud'); hudCheck.set(prefs.get('hud')); syncDisplay(); } });
 
   shortcuts.register({ id: 'time.pause', key: 'Space', label: 'Pause or resume time', group: 'Simulation', run: () => { state.playing = !state.playing; timeBar.sync(); } });
@@ -1264,6 +1270,10 @@ export function createExplorerUI(config) {
     applyViewPrefs,
     prefs,
     shortcuts,
+    // Exposed so something outside the panel can change a view option without
+    // the checkbox that shows it going stale — the macOS menu toggles music
+    // this way, and the Display panel it mirrors stays in step.
+    setViewOption,
     setImmersive,
     togglePanel,
     toggleDialog,

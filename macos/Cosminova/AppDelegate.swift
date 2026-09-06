@@ -55,6 +55,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         MainMenu.install(target: self)
 
         NSApp.activate(ignoringOtherApps: true)
+
+        /*
+         Once the scene is up rather than over the top of a black window. The
+         notice is about keys the user is about to reach for; meeting it before
+         they have seen the app would be an interruption about nothing yet.
+         */
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            FunctionKeys.presentNotice(unprompted: false)
+        }
     }
 
     /*
@@ -148,6 +157,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     @objc func showExplorer(_ sender: Any?) { load(.explorer) }
     @objc func showSky(_ sender: Any?) { load(.sky) }
     @objc func reloadScene(_ sender: Any?) { webView.reload() }
+    @objc func explainFunctionKeys(_ sender: Any?) { FunctionKeys.presentNotice(unprompted: true) }
+
+    /**
+     Runs one of the web app's own shortcut actions, named by the menu item.
+
+     Going through the registry rather than reaching for whatever the action
+     happens to do means the menu cannot drift from the key: both end up in the
+     same `run`, and an action that grows a guard grows it for both.
+
+     The optional chaining is not defensive habit. The sky view is a separate
+     entry point with no `cosminova` on it, and these items stay enabled while
+     it is showing, so the call has to land on nothing without throwing.
+     */
+    @objc func runShortcut(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? String else { return }
+        let escaped = id.replacingOccurrences(of: "'", with: "\\'")
+        webView.evaluateJavaScript("window.cosminova?.ui?.shortcuts?.run('\(escaped)') ?? false") { result, error in
+            if let error {
+                NSLog("Cosminova: shortcut %@ failed — %@", id, error.localizedDescription)
+            } else if result as? Bool == false {
+                // Either this view has no registry or the action declined.
+                NSLog("Cosminova: shortcut %@ did nothing here", id)
+            }
+        }
+    }
 
     // MARK: - failure
 

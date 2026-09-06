@@ -68,6 +68,22 @@ export function createShortcuts(prefs) {
     return groups;
   }
 
+  /**
+   * Fire an action by id, as though its key had been pressed.
+   *
+   * The macOS shell drives its menu through this. A menu item and a key press
+   * ought not to be two separate routes to the same behaviour, because two
+   * routes drift; this way the menu is the registry with a different front
+   * end, and an action added here appears in both.
+   */
+  function run(id) {
+    const action = actions.get(id);
+    if (!action) return false;
+    if (action.when && !action.when()) return false;
+    action.run();
+    return true;
+  }
+
   function handle(event) {
     // Typing in a field must not trigger navigation. Esc and the function keys
     // are the exceptions: they are how you get back out of a field.
@@ -93,5 +109,5 @@ export function createShortcuts(prefs) {
 
   window.addEventListener('keydown', handle);
 
-  return { register, binding, rebind, reset, list, handle, actions };
+  return { register, binding, rebind, reset, list, handle, run, actions };
 }

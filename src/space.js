@@ -2210,6 +2210,10 @@ window.cosminova = {
     craft.invalidateTrajectory();
     trajectoryDate = state.date.getTime();
   },
+  // Exposed like the renderer and the controls are, so a check can ask whether
+  // the music actually stopped rather than only whether the preference that
+  // ought to stop it changed.
+  ambient,
   craftField,
   craftRecord,
   craftDetail: (key) => craft.detailFor(craftKeyOf(key) ?? key),

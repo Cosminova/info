@@ -38,7 +38,8 @@
     "check:star": "node scripts/star-check.mjs",
     "check:zoom": "node scripts/zoom-check.mjs",
     "check:relief": "node scripts/relief-check.mjs mars && node scripts/relief-check.mjs moon",
-    "check:glare": "node scripts/craft-glare-check.mjs"
+    "check:glare": "node scripts/craft-glare-check.mjs",
+    "check:music": "node scripts/music-check.mjs"
   },
   "keywords": [],
   "author": "",
