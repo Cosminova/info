@@ -2161,6 +2161,8 @@ function frame(now) {
       ? 0.1
       : 0.05 / (1 + (targetRadius / Math.max(controls.distanceKm, 1)) * 10),
     focusGalaxyIndex: viewingGalaxy ? destByKey.get(state.target)?.galaxyIndex ?? -1 : -1,
+    viewPxPerRad: renderer.domElement.clientHeight
+      / (2 * Math.tan((camera.fov * Math.PI) / 360)),
   });
 
   ambient.updateScene(

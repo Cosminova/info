@@ -9,6 +9,7 @@ import {
   PlaneGeometry,
   Points,
   ShaderMaterial,
+  Vector2,
   Vector3,
 } from 'three';
 import { galacticToEquatorial } from '../astro.js';
@@ -16,6 +17,14 @@ import { equatorialToEcliptic, KPC_KM, MPC_KM, PC_KM } from './units.js';
 import { platform } from './platform.js';
 
 const MAG_TO_LOG2_FLUX = 1.3287712;
+
+// A galaxy narrower than this many pixels is not drawn, fading in over the gap
+// to the second figure. This is only about aliasing — a sub-pixel disc can
+// only be a flickering white dot — so it is set as low as it can be while
+// still doing that, which also spares the fill of a few thousand quads that
+// were never visible.
+const GALAXY_MIN_PX = 2;
+const GALAXY_FULL_PX = 6;
 
 const STAR_VERTEX = /* glsl */ `
   #include <common>
@@ -104,12 +113,17 @@ const GALAXY_VERTEX = /* glsl */ `
   attribute vec3 iColor;
   attribute vec3 iParams;
 
+  uniform float uPxPerRad;
+  uniform vec2 uSizeGate;
+
   varying vec2 vUv;
   varying vec3 vColor;
   varying float vAspect;
   varying float vMorph;
   varying float vSeed;
   varying float vLum;
+  varying float vFade;
+  varying float vPx;
 
   void main() {
     vUv = position.xy;
@@ -118,6 +132,21 @@ const GALAXY_VERTEX = /* glsl */ `
     vMorph = iParams.x;
     vSeed = iParams.y;
     vLum = iParams.z;
+
+    // How wide this disc lands on screen. The fragment stage needs this to
+    // size its detail in pixels rather than in fractions of the quad, and a
+    // disc thinner than a pixel or two has nothing to draw but an aliased
+    // white dot, so it is dropped: the catalogue holds nearly four thousand
+    // galaxies and from outside the Milky Way almost all of them are that
+    // small.
+    vPx = 2.0 * length(iAxisU) * uPxPerRad / max(length(iOffset), 1.0);
+    vFade = smoothstep(uSizeGate.x, uSizeGate.y, vPx);
+    if (vFade <= 0.0) {
+      // Off the clip volume entirely, so the quad costs no fragments.
+      gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+      return;
+    }
+
     vec3 world = iOffset + iAxisU * position.x + iAxisV * position.y;
     gl_Position = projectionMatrix * modelViewMatrix * vec4(world, 1.0);
     #include <logdepthbuf_vertex>
@@ -133,6 +162,8 @@ const GALAXY_FRAGMENT = /* glsl */ `
   varying float vMorph;
   varying float vSeed;
   varying float vLum;
+  varying float vFade;
+  varying float vPx;
 
   float hash21(vec2 p) {
     return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -210,12 +241,22 @@ const GALAXY_FRAGMENT = /* glsl */ `
     colour *= 1.0 - dust * 0.55;
     colour *= vColor * vLum;
 
-    float speckle = hash21(floor(p * 260.0) + vSeed * 17.0);
-    float fieldStars = step(0.987, speckle) * pow(speckle, 6.0) * exp(-r * 1.15);
+    // Invented field stars, in cells sized to stay a pixel or two wide however
+    // close the disc is. A fixed 260 cells across the quad grew with it: from
+    // inside a galaxy, with the billboard covering the sky, every lit cell was
+    // a hard white slab a dozen pixels across, all tilted to the disc's
+    // position angle. That is the field of white marks reported around the
+    // Magellanic Clouds, and it is the same grid at every distance.
+    float cells = clamp(vPx * 0.31, 80.0, 5000.0);
+    float speckle = hash21(floor(p * cells) + vSeed * 17.0);
+    // Nearer still, the host-star particle layer draws this galaxy's stars for
+    // real, so the painted ones bow out instead of competing with them.
+    float painted = 1.0 - smoothstep(900.0, 2600.0, vPx);
+    float fieldStars = step(0.987, speckle) * pow(speckle, 6.0) * exp(-r * 1.15) * painted;
     colour += vec3(0.92, 0.94, 1.0) * fieldStars * mix(0.35, 0.9, spiral);
 
     float edge = 1.0 - smoothstep(0.86, 1.0, r);
-    colour *= edge;
+    colour *= edge * vFade;
     if (dot(colour, vec3(0.3, 0.5, 0.2)) < 0.0004) discard;
     gl_FragColor = vec4(colour, 1.0);
     #include <logdepthbuf_fragment>
@@ -514,6 +555,12 @@ export class DeepField {
     geometry.instanceCount = count;
 
     const material = new ShaderMaterial({
+      uniforms: {
+        uPxPerRad: { value: 600 },
+        // Nothing below the first figure is drawn; between the two it fades in.
+        // Both are apparent widths in CSS pixels.
+        uSizeGate: { value: new Vector2(GALAXY_MIN_PX, GALAXY_FULL_PX) },
+      },
       vertexShader: GALAXY_VERTEX,
       fragmentShader: GALAXY_FRAGMENT,
       blending: AdditiveBlending,
@@ -530,6 +577,7 @@ export class DeepField {
     const mesh = new Mesh(geometry, material);
     mesh.frustumCulled = false;
     mesh.renderOrder = 1;
+    this.galaxyMaterial = material;
     return { mesh, offsets, sizes, count };
   }
 
@@ -694,12 +742,18 @@ export class DeepField {
    * visible are touched, so a close-up of a crater does not rewrite 70k
    * galaxy-scale particles every frame.
    */
-  update({ cameraWorld, pixelRatio, sunDistanceKm, limitMagnitude = 7.0, gain, focusGalaxyIndex = -1 }) {
+  update({
+    cameraWorld, pixelRatio, sunDistanceKm, limitMagnitude = 7.0, gain,
+    focusGalaxyIndex = -1, viewPxPerRad,
+  }) {
     this.starMaterial.uniforms.pixelRatio.value = pixelRatio;
     this.starMaterial.uniforms.limitMagnitude.value = limitMagnitude;
     if (gain !== undefined) this.starMaterial.uniforms.gain.value = gain;
     this.mwMaterial.uniforms.pixelRatio.value = pixelRatio;
     this.hostMaterial.uniforms.pixelRatio.value = pixelRatio;
+    // Zoom changes the field of view, so the size gate has to be told the
+    // scale every frame rather than only on resize.
+    if (viewPxPerRad > 0) this.galaxyMaterial.uniforms.uPxPerRad.value = viewPxPerRad;
 
     const cx = cameraWorld.x;
     const cy = cameraWorld.y;

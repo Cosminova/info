@@ -41,6 +41,7 @@
     "render:video": "node scripts/render-video.mjs",
     "check:travel": "node scripts/travel-check.mjs",
     "check:drag": "node scripts/drag-check.mjs",
+    "check:galaxy": "node scripts/galaxy-slab-check.mjs",
     "check:star": "node scripts/star-check.mjs",
     "check:zoom": "node scripts/zoom-check.mjs",
     "check:relief": "node scripts/relief-check.mjs mars && node scripts/relief-check.mjs moon",
