@@ -144,10 +144,12 @@ h3 {
 /* The mark itself, from the same file the favicon is built from, so the header
    and the browser tab are the same shape. Sized a little larger than the old
    CSS dot because the terminator needs the pixels to read as a sphere. */
+/* The reduced mark, not the detailed one: at this size the second torus band
+   and the jet taper only muddy it. */
 .nav__mark {
-  width: 20px;
-  height: 20px;
-  background: url('assets/logo.svg') center / contain no-repeat;
+  width: 22px;
+  height: 22px;
+  background: url('assets/logo-small.svg') center / contain no-repeat;
   flex: none;
 }
 
@@ -209,42 +211,201 @@ h3 {
   z-index: -1;
 }
 
-.hero__video,
+.hero__slides {
+  position: absolute;
+  inset: 0;
+}
+
 .hero__media img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  /* Left at full brightness. The frame is a sunset whose upper sky is already
-     nearly black, so anything taken off here turns the hero into a grey panel
+  /* Left at full brightness. The frames are mostly dark sky with one bright
+     thing in them, so anything taken off here turns the hero into a grey panel
      and throws away the only colour on the page. */
   filter: saturate(112%);
 }
 
 /*
- * Two gradients rather than one flat overlay: a vertical wash that darkens the
- * top behind the header and lands on the page colour at the fold, and a radial
- * one that keeps the middle — where the horizon band and the star sit —
- * essentially untouched.
+ * The slides are stacked and cross-faded on opacity, which the compositor can
+ * do without touching layout. Only the active one is opaque.
  *
- * Kept deliberately light. The title carries its own drop shadow, which is
- * what buys legibility over the bright part of the horizon, so the scrim does
- * not have to and the picture survives.
+ * The slow scale is what stops a still image from looking like a still image
+ * during the eight seconds it is up. It runs on the active slide only, so the
+ * fade out is a straight fade rather than a fade plus a snap back to 1.
+ */
+.hero__slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  transition: opacity 1.4s var(--ease);
+}
+
+/* Duration tracks the slide interval in main.js, so the zoom finishes about
+   when the slide hands over rather than stopping dead partway. */
+.hero__slide.is-active {
+  opacity: 1;
+  animation: hero-drift 8.6s linear both;
+}
+
+@keyframes hero-drift {
+  from {
+    scale: 1;
+  }
+  to {
+    scale: 1.06;
+  }
+}
+
+/* The caption and the dots, on one line along the bottom of the hero. */
+.hero__slideshow {
+  position: absolute;
+  inset: auto 0 3.6rem 0;
+  width: var(--shell);
+  margin-inline: auto;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  pointer-events: none;
+}
+
+.hero__caption {
+  max-width: 40ch;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.9);
+  /* Both lines animate together on a change of slide, so the caption arrives
+     with its picture rather than swapping under it. */
+  animation: caption-in 0.7s var(--ease) both;
+}
+
+.hero__caption-title {
+  display: block;
+  color: var(--text);
+  letter-spacing: 0.02em;
+}
+
+.hero__caption-note {
+  color: #b9c2cf;
+}
+
+@keyframes caption-in {
+  from {
+    opacity: 0;
+    translate: 0 6px;
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+
+.hero__dots {
+  display: flex;
+  gap: 0.55rem;
+  pointer-events: auto;
+  flex: none;
+}
+
+/* Deliberately larger than it looks: the dot is 8px but the hit area is 22px,
+   which is the difference between usable and not on a phone. */
+.hero__dot {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+
+.hero__dot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.32);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  transition: background 0.3s var(--ease), scale 0.3s var(--ease);
+}
+
+.hero__dot:hover::before {
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.hero__dot[aria-selected='true']::before {
+  background: var(--amber);
+  scale: 1.25;
+}
+
+.hero__dot:focus-visible {
+  outline: 2px solid var(--amber);
+  outline-offset: 2px;
+  border-radius: 50%;
+}
+
+/* On a phone the note wraps to four lines and crowds the dots, and the slide's
+   name alone already answers what the picture is. */
+@media (max-width: 560px) {
+  .hero__slideshow {
+    inset: auto 0 2.8rem 0;
+    align-items: center;
+  }
+
+  .hero__caption-note {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero__slide.is-active {
+    animation: none;
+  }
+
+  .hero__caption {
+    animation: none;
+  }
+}
+
+/*
+ * Retuned for the slideshow. The single sunset this replaced had a nearly
+ * black upper sky with its one bright band low in the frame, so the scrim
+ * could darken the top and leave the middle alone.
+ *
+ * That assumption does not survive eight pictures. A lensed accretion disc
+ * fills the centre of the frame with the brightest thing on the page, directly
+ * behind the title and the lede, and Saturn and the Sun sit there too. So the
+ * wash now carries through the middle as well, and there is a soft column
+ * behind the text on top of it.
+ *
+ * Still deliberately restrained: the title and lede carry their own shadows,
+ * which is what lets this stay light enough to see the picture through.
  */
 .hero__scrim {
   position: absolute;
   inset: 0;
   background:
-    /* Darkens the top third, where the words are, and leaves the bottom third
-       — star and horizon band — very nearly alone. */
-    linear-gradient(
-      to bottom,
-      rgba(5, 7, 12, 0.82) 0%,
-      rgba(5, 7, 12, 0.52) 22%,
-      rgba(5, 7, 12, 0.1) 48%,
-      rgba(5, 7, 12, 0) 72%,
-      rgba(5, 7, 12, 0.55) 94%,
-      var(--ink) 100%
-    );
+    /* A soft ellipse behind the text column. Darkens where the words are
+       without laying a visible band across the whole width. */
+    radial-gradient(
+      120% 62% at 50% 26%,
+      rgba(5, 7, 12, 0.58) 0%,
+      rgba(5, 7, 12, 0.34) 45%,
+      rgba(5, 7, 12, 0) 100%
+    ),
+    /* Top for the header, a carried-through middle for the bright centre of
+       the frame, and a landing on the page colour at the fold. */
+      linear-gradient(
+        to bottom,
+        rgba(5, 7, 12, 0.8) 0%,
+        rgba(5, 7, 12, 0.54) 24%,
+        rgba(5, 7, 12, 0.34) 50%,
+        rgba(5, 7, 12, 0.24) 72%,
+        rgba(5, 7, 12, 0.62) 94%,
+        var(--ink) 100%
+      );
 }
 
 .hero__body {
@@ -484,49 +645,93 @@ h3 {
   font-size: 1.04rem;
 }
 
-/* ---------------------------------------------------------------- cards */
+/* ----------------------------------------------------------------- rows */
 
-.cards {
+.rows {
   display: grid;
-  /* 340px rather than 290px so the shell resolves to three columns, not four.
-     There are six cards, and four across leaves two dead cells hanging off the
-     end of the panel. */
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 1px;
-  background: var(--line);
-  border: 1px solid var(--line);
+  gap: clamp(3rem, 6vw, 5.5rem);
+}
+
+.row {
+  display: grid;
+  /* The picture takes the larger share. The paragraph is four lines and reads
+     comfortably at this width, and giving the image the remainder is what
+     stops the section feeling like documentation. */
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: clamp(1.8rem, 4vw, 3.4rem);
+  align-items: center;
+}
+
+/* Alternate which side the picture falls on. Ordering the columns rather than
+   reordering the DOM, so the heading still precedes its image for a reader
+   going through in sequence. */
+.row:nth-child(even) .row__media {
+  order: 2;
+}
+
+.row__media {
+  margin: 0;
   border-radius: var(--radius);
   overflow: hidden;
-}
-
-/*
- * Cards share hairlines rather than each carrying their own border, which is
- * what the 1px grid gap is doing. It keeps the block reading as one panel.
- */
-.card {
+  border: 1px solid var(--line);
   background: var(--ink-1);
-  padding: 2.1rem 1.9rem;
-  transition: background 0.3s var(--ease);
 }
 
-.card:hover {
-  background: var(--ink-2);
+.row__media img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  transition: transform 0.8s var(--ease);
 }
 
-.card__title {
-  font-size: 1.1rem;
-  margin-bottom: 0.7rem;
+.row:hover .row__media img {
+  transform: scale(1.03);
+}
+
+.row__title {
+  font-size: clamp(1.2rem, 2vw, 1.5rem);
+  margin-bottom: 0.85rem;
   color: var(--text);
 }
 
-.card p {
+.row__body p {
   margin: 0;
   color: var(--text-dim);
-  font-size: 0.95rem;
+  font-size: 1rem;
+  max-width: 46ch;
+}
+
+/* Stacked below the point where a two-column row leaves the paragraph in a
+   column too narrow to read. The picture goes on top in every row: alternating
+   sides means nothing in one column, and it would only make the order look
+   inconsistent. */
+@media (max-width: 860px) {
+  .row {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .row:nth-child(even) .row__media {
+    order: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .row:hover .row__media img {
+    transform: none;
+  }
 }
 
 /* -------------------------------------------------------------- gallery */
 
+/*
+ * Twelve tiles, all the same size. There were two double-width ones for
+ * variety, which left the last row holding a single wide tile against two
+ * empty columns; twelve equal cells instead divide without a remainder at two,
+ * three, four and six columns, which is every count this grid resolves to.
+ */
 .gallery {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
@@ -570,18 +775,6 @@ h3 {
   color: var(--text);
   font-weight: 600;
   letter-spacing: 0.01em;
-}
-
-/* The black hole is the widest composition of the set and earns two columns
-   where there is room for them. */
-@media (min-width: 900px) {
-  .shot--wide {
-    grid-column: span 2;
-  }
-
-  .shot--wide img {
-    aspect-ratio: 8 / 5;
-  }
 }
 
 /* ------------------------------------------------------------- download */

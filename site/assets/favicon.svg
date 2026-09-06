@@ -1,18 +1,62 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
   <defs>
-    <linearGradient id="lit" x1="0.13" y1="0.42" x2="0.68" y2="0.60">
-      <stop offset="0" stop-color="#F2FBFF"/>
-      <stop offset="0.10" stop-color="#B6E9FF"/>
-      <stop offset="0.34" stop-color="#70D4FF"/>
-      <stop offset="0.70" stop-color="#3690CC"/>
-      <stop offset="1" stop-color="#123049"/>
+    <!-- Outward through the disc: white-hot at the core to crimson at the rim. -->
+    <linearGradient id="torus" x1="0" y1="0.5" x2="1" y2="0.5">
+      <stop offset="0"    stop-color="#7E1206"/>
+      <stop offset="0.18" stop-color="#D62A0C"/>
+      <stop offset="0.42" stop-color="#F5761B"/>
+      <stop offset="0.58" stop-color="#FFB04A"/>
+      <stop offset="0.82" stop-color="#D62A0C"/>
+      <stop offset="1"    stop-color="#7E1206"/>
     </linearGradient>
-    <filter id="bloom" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="2.4"/>
-    </filter>
+    <radialGradient id="core" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0"    stop-color="#FFFBF2"/>
+      <stop offset="0.34" stop-color="#FFE9B8"/>
+      <stop offset="0.62" stop-color="#FFB04A" stop-opacity="0.85"/>
+      <stop offset="1"    stop-color="#F5761B" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="beam" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0"    stop-color="#D62A0C" stop-opacity="0"/>
+      <stop offset="0.28" stop-color="#FFB04A" stop-opacity="0.9"/>
+      <stop offset="0.5"  stop-color="#FFFBF2"/>
+      <stop offset="0.72" stop-color="#FFB04A" stop-opacity="0.9"/>
+      <stop offset="1"    stop-color="#D62A0C" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.3"  stop-color="#F5761B" stop-opacity="0.42"/>
+      <stop offset="1"    stop-color="#F5761B" stop-opacity="0"/>
+    </radialGradient>
   </defs>
+
   <rect width="64" height="64" rx="14" fill="#090C14"/>
-  <circle cx="32" cy="32" r="24" fill="none" stroke="#22323F" stroke-width="1.4"/>
-  <path d="M 32 8 A 24 24 0 0 0 32 56 A 4 24 0 0 1 32 8 Z" fill="#70D4FF" opacity="0.45" filter="url(#bloom)"/>
-  <path d="M 32 8 A 24 24 0 0 0 32 56 A 4 24 0 0 1 32 8 Z" fill="url(#lit)"/>
+  <circle cx="32" cy="32" r="30" fill="url(#glow)"/>
+
+  <!-- The jets, on the polar axis. Drawn before the core so they read as
+       emerging from behind it, and tapered because a collimated beam that is
+       the same width along its whole length reads as a drawn line. -->
+  <g transform="rotate(58 32 32)">
+    <path d="M 30.5 2 L 33.5 2 L 32.675 32 L 31.325 32 Z" fill="url(#beam)"/>
+    <path d="M 30.5 62 L 33.5 62 L 32.675 32 L 31.325 32 Z" fill="url(#beam)"/>
+    <rect x="31.55" y="3" width="0.9" height="58" fill="url(#beam)"/>
+  </g>
+
+  <!-- The torus, tilted. The far half first, then the core, then the near half
+       over the top of it: that overlap is the whole of the depth cue. -->
+  <g transform="rotate(-32 32 32)">
+    <ellipse cx="32" cy="32" rx="25" ry="9.5" fill="none"
+             stroke="url(#torus)" stroke-width="5.5" opacity="0.55"/>
+    <ellipse cx="32" cy="32" rx="19" ry="6.5" fill="none"
+             stroke="url(#torus)" stroke-width="3.4" opacity="0.8"/>
+  </g>
+
+  <ellipse cx="32" cy="32" rx="11" ry="11" fill="url(#core)"/>
+
+  <!-- Understated on purpose: bright enough around it that the horizon is a
+       hint of dark at the heart of the light rather than a hole punched in it. -->
+  <circle cx="32" cy="32" r="2.9" fill="#000" opacity="0.92"/>
+
+  <g transform="rotate(-32 32 32)">
+    <path d="M 7 32 A 25 9.5 0 0 0 57 32"
+          fill="none" stroke="url(#torus)" stroke-width="5.5" stroke-linecap="round"/>
+  </g>
 </svg>

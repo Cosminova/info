@@ -16,7 +16,9 @@
       property="og:description"
       content="A real-scale solar system you can fly through, from four billion kilometres out to a few metres above a crater floor."
     />
-    <meta property="og:image" content="assets/hero.jpg" />
+    <meta property="og:image" content="assets/og.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
     <meta name="twitter:card" content="summary_large_image" />
 
     <!-- The SVG is what any current browser uses; the 32 px raster is there for
@@ -25,7 +27,9 @@
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="assets/icon-32.png" sizes="32x32" type="image/png" />
     <link rel="apple-touch-icon" href="assets/icon-180.png" />
-    <link rel="preload" as="image" href="assets/hero.jpg" />
+    <!-- The first slide only. The other seven are fetched by main.js as their
+         turn comes, which is what keeps the hero off the critical path. -->
+    <link rel="preload" as="image" href="assets/hero/sgr-a.jpg" fetchpriority="high" />
     <link rel="stylesheet" href="styles.css" />
   </head>
 
@@ -50,20 +54,45 @@
     <main id="main">
       <!-- Hero -->
       <section class="hero" id="top">
+        <!--
+          A slideshow rather than one still, because the range is the pitch: a
+          lensed black hole, then a ringed giant, then a planet's own dusk from
+          the ground. One picture can only make one of those claims.
+
+          Only the first frame has a src. The rest carry data-src and are
+          fetched by main.js just before their turn, which keeps seven images
+          off the critical path — without that the hero costs about 600 KB
+          before the title paints. With scripting off the first frame simply
+          stays, which is the same behaviour the video had with its poster.
+        -->
         <div class="hero__media">
-          <video
-            class="hero__video"
-            poster="assets/hero.jpg"
-            autoplay
-            muted
-            loop
-            playsinline
-            preload="auto"
-            aria-hidden="true"
-            tabindex="-1"
-          >
-            <source src="assets/hero-loop.mp4" type="video/mp4" />
-          </video>
+          <div class="hero__slides" aria-hidden="true">
+            <img
+              class="hero__slide is-active"
+              src="assets/hero/sgr-a.jpg"
+              alt=""
+              width="1600"
+              height="900"
+              fetchpriority="high"
+              decoding="async"
+              data-title="Sagittarius A*"
+              data-note="Four million suns in a point, and the ring is light from behind it"
+            />
+            <img class="hero__slide" data-src="assets/hero/saturn.jpg" alt="" width="1600" height="900" decoding="async"
+              data-title="Saturn" data-note="The ring shadow on the globe, and the globe's shadow in the rings" />
+            <img class="hero__slide" data-src="assets/hero/jupiter.jpg" alt="" width="1600" height="900" decoding="async"
+              data-title="Jupiter" data-note="Zonal cloud bands, at eleven times Earth's radius" />
+            <img class="hero__slide" data-src="assets/hero/earth.jpg" alt="" width="1600" height="900" decoding="async"
+              data-title="Earth" data-note="Air on the limb, and the terminator falling across the Pacific" />
+            <img class="hero__slide" data-src="assets/hero/earth-ground.jpg" alt="" width="1600" height="900" decoding="async"
+              data-title="From the ground" data-note="Stood on the surface, under a sky computed by scattering" />
+            <img class="hero__slide" data-src="assets/hero/the-sun.jpg" alt="" width="1600" height="900" decoding="async"
+              data-title="The Sun" data-note="Granulation and limb glow, from eight solar radii out" />
+            <img class="hero__slide" data-src="assets/hero/sirius.jpg" alt="" width="1600" height="900" decoding="async"
+              data-title="Sirius" data-note="Radius from luminosity, colour from temperature" />
+            <img class="hero__slide" data-src="assets/hero/m87.jpg" alt="" width="1600" height="900" decoding="async"
+              data-title="M87*" data-note="A relativistic jet, launched along the pole" />
+          </div>
           <div class="hero__scrim" aria-hidden="true"></div>
         </div>
 
@@ -111,6 +140,22 @@
           </p>
         </div>
 
+        <!--
+          What the picture behind the title actually is. Empty in the markup
+          and filled by main.js from the active slide's data attributes, so
+          there is only one place the captions live.
+
+          The dots are real buttons: the slideshow moves on its own, and
+          anything that moves on its own needs a way to stop it and go back.
+        -->
+        <div class="hero__slideshow">
+          <figcaption class="hero__caption" aria-live="polite">
+            <strong class="hero__caption-title"></strong>
+            <span class="hero__caption-note"></span>
+          </figcaption>
+          <div class="hero__dots" role="tablist" aria-label="Choose a view"></div>
+        </div>
+
         <div class="hero__hint" aria-hidden="true"><span></span></div>
       </section>
 
@@ -148,60 +193,165 @@
           </p>
         </div>
 
-        <div class="cards">
-          <article class="card reveal">
-            <h3 class="card__title">True scale, no cheating</h3>
-            <p>
-              Bodies are placed by ephemeris at their real separations and drawn at their real
-              radii. The camera crosses thirteen orders of magnitude without a loading screen or a
-              hidden change of units — the depth buffer is logarithmic so a rover and a gas giant
-              can share one frame.
-            </p>
+        <!--
+          Each claim next to the frame that demonstrates it, alternating sides.
+          These were six text-only cards; a claim about how light behaves is
+          worth very little without the picture of it behind glass, and every
+          image here is a capture of the thing described in the paragraph
+          beside it rather than decoration chosen to match.
+        -->
+        <div class="rows">
+          <article class="row reveal">
+            <figure class="row__media">
+              <img
+                src="assets/feature/scale.jpg"
+                alt="Saturn small in the frame, its rings edge-lit, against a dense starfield"
+                width="1400"
+                height="933"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
+            <div class="row__body">
+              <h3 class="row__title">True scale, no cheating</h3>
+              <p>
+                Bodies are placed by ephemeris at their real separations and drawn at their real
+                radii. The camera crosses thirteen orders of magnitude without a loading screen or
+                a hidden change of units — the depth buffer is logarithmic so a rover and a gas
+                giant can share one frame.
+              </p>
+            </div>
           </article>
 
-          <article class="card reveal">
-            <h3 class="card__title">Surfaces from measurement</h3>
-            <p>
-              Terrain is spacecraft imagery over real elevation, streamed as a level-of-detail
-              cubesphere. The Moon's relief comes from Lunar Orbiter Laser Altimeter data, so a
-              crater you descend into is the crater that is actually there.
-            </p>
+          <article class="row reveal">
+            <figure class="row__media">
+              <img
+                src="assets/feature/surface.jpg"
+                alt="The lunar surface under a low sun, craters raking long shadows toward the camera"
+                width="1400"
+                height="933"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
+            <div class="row__body">
+              <h3 class="row__title">Surfaces from measurement</h3>
+              <p>
+                Terrain is spacecraft imagery over real elevation, streamed as a level-of-detail
+                cubesphere. The Moon's relief comes from Lunar Orbiter Laser Altimeter data, so a
+                crater you descend into is the crater that is actually there. The shot above is at
+                a grazing sun, because relief is invisible at noon.
+              </p>
+            </div>
           </article>
 
-          <article class="card reveal">
-            <h3 class="card__title">Atmospheres that scatter</h3>
-            <p>
-              Skies are integrated per-wavelength through Rayleigh and Mie scattering rather than
-              tinted by hand. It is the same calculation that makes Earth's sunset red and, with a
-              thinner atmosphere and more dust, makes Mars's sunset come out blue.
-            </p>
+          <article class="row reveal">
+            <figure class="row__media">
+              <img
+                src="assets/feature/atmosphere.jpg"
+                alt="The sun on the Martian horizon, the dusty sky graded from pale blue to brown"
+                width="1400"
+                height="933"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
+            <div class="row__body">
+              <h3 class="row__title">Atmospheres that scatter</h3>
+              <p>
+                Skies are integrated per-wavelength through Rayleigh and Mie scattering rather than
+                tinted by hand. It is the same calculation that makes Earth's sunset red and, with
+                a thinner atmosphere and more dust, makes the glow around the Martian sun come out
+                blue.
+              </p>
+            </div>
           </article>
 
-          <article class="card reveal">
-            <h3 class="card__title">Stars with real physics</h3>
-            <p>
-              Radii are derived from luminosity and spectral type through Stefan–Boltzmann, so
-              Betelgeuse arrives at 712 solar radii — 3.3 astronomical units, wide enough to
-              swallow the orbit of Mars — and glows the colour its temperature says it should.
-            </p>
+          <article class="row reveal">
+            <figure class="row__media">
+              <img
+                src="assets/feature/stars.jpg"
+                alt="Sirius as a blue-white disc wrapped in a wide blue halo"
+                width="1400"
+                height="933"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
+            <div class="row__body">
+              <h3 class="row__title">Stars with real physics</h3>
+              <p>
+                Radii come from luminosity and spectral type through Stefan–Boltzmann, and colour
+                from temperature — which is why Sirius above is blue-white rather than yellow. The
+                same arithmetic puts Betelgeuse at 712 solar radii: 3.3 astronomical units, wide
+                enough to swallow the orbit of Mars.
+              </p>
+            </div>
           </article>
 
-          <article class="card reveal">
-            <h3 class="card__title">Light bent by gravity</h3>
-            <p>
-              Black holes are ray-marched through the Schwarzschild metric. The photon ring is not
-              a texture or a sprite: it is light from behind the hole, bent around the front and
-              arriving at the camera the long way.
-            </p>
+          <article class="row reveal">
+            <figure class="row__media">
+              <img
+                src="assets/feature/gravity.jpg"
+                alt="A black hole's shadow encircled by its accretion disc, lensed into a ring around the front"
+                width="1400"
+                height="933"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
+            <div class="row__body">
+              <h3 class="row__title">Light bent by gravity</h3>
+              <p>
+                Black holes are ray-marched through the Schwarzschild metric. The photon ring is
+                not a texture or a sprite: it is light from behind the hole, bent around the front
+                and arriving at the camera the long way. The disc appears above and below the
+                shadow at once because you are seeing both its faces.
+              </p>
+            </div>
           </article>
 
-          <article class="card reveal">
-            <h3 class="card__title">Time you can drive</h3>
-            <p>
-              Wind the clock and the whole system moves on its real ephemeris — eclipses fall where
-              they fall, moons shadow their planets, and a spacecraft is wherever JPL Horizons says
-              it was on that date.
-            </p>
+          <article class="row reveal">
+            <figure class="row__media">
+              <img
+                src="assets/feature/craft.jpg"
+                alt="The Hubble Space Telescope in low orbit, South America beneath it"
+                width="1400"
+                height="933"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
+            <div class="row__body">
+              <h3 class="row__title">Spacecraft, where they were</h3>
+              <p>
+                A hundred and nineteen craft, landers, rovers and landing sites, each on its own
+                trajectory rather than parked at a decorative offset. You can ride along and look
+                out from the craft itself — above is Hubble, at its real size, over the ground it
+                was passing.
+              </p>
+            </div>
+          </article>
+
+          <article class="row reveal">
+            <figure class="row__media">
+              <img
+                src="assets/feature/time.jpg"
+                alt="Jupiter's banded cloud tops, a terminator falling across the eastern limb"
+                width="1400"
+                height="933"
+                loading="lazy"
+                decoding="async"
+              />
+            </figure>
+            <div class="row__body">
+              <h3 class="row__title">Time you can drive</h3>
+              <p>
+                Wind the clock and the whole system moves on its real ephemeris — eclipses fall
+                where they fall, moons shadow their planets, and a spacecraft is wherever JPL
+                Horizons says it was on that date.
+              </p>
+            </div>
           </article>
         </div>
       </section>
@@ -265,7 +415,7 @@
           <figure class="shot reveal">
             <img
               src="assets/shots/the-sun.jpg"
-              alt="The Sun's granulated photosphere filling the frame"
+              alt="The Sun's granulated photosphere filling the frame, the Milky Way behind it"
               width="1000"
               height="1250"
               loading="lazy"
@@ -273,18 +423,9 @@
             <figcaption><strong>The Sun</strong> From eight times its own radius.</figcaption>
           </figure>
 
+          <!-- The two black holes are kept apart in the order rather than left
+               adjacent: side by side they read as the same picture twice. -->
           <figure class="shot reveal">
-            <img
-              src="assets/shots/betelgeuse.jpg"
-              alt="Betelgeuse as a vast amber disc, its surface mottled with convective granulation"
-              width="1000"
-              height="1250"
-              loading="lazy"
-            />
-            <figcaption><strong>Betelgeuse</strong> 712 solar radii, at 3600 kelvin.</figcaption>
-          </figure>
-
-          <figure class="shot reveal shot--wide">
             <img
               src="assets/shots/sagittarius-a.jpg"
               alt="Sagittarius A* with its accretion disc warped into a photon ring by gravitational lensing"
@@ -295,6 +436,74 @@
             <figcaption>
               <strong>Sagittarius A*</strong> Four million suns in a point, and the ring is light
               from behind it.
+            </figcaption>
+          </figure>
+
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/saturn.jpg"
+              alt="Saturn lit from one side, the ring shadow laid across the globe"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption><strong>Saturn</strong> The rings put their shadow on the globe.</figcaption>
+          </figure>
+
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/jupiter.jpg"
+              alt="Jupiter's cloud tops filling the frame, belts and zones with visible turbulence"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption><strong>Jupiter</strong> Belts, zones, and the storms between.</figcaption>
+          </figure>
+
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/moon-surface.jpg"
+              alt="The lunar surface at a grazing sun, craters throwing long shadows, Earth and a star above"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption><strong>The Moon</strong> Altimetry, at a grazing sun.</figcaption>
+          </figure>
+
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/earth-crescent.jpg"
+              alt="A crescent Earth against the Milky Way, Australia under the terminator"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption><strong>Earth</strong> A crescent, from four radii out.</figcaption>
+          </figure>
+
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/sirius.jpg"
+              alt="Sirius as a blue-white disc inside a broad blue halo"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption><strong>Sirius</strong> Blue-white, because it is 9940 kelvin.</figcaption>
+          </figure>
+
+          <figure class="shot reveal">
+            <img
+              src="assets/shots/m87.jpg"
+              alt="M87*, its accretion disc lensed around the shadow and a jet launching from the pole"
+              width="1000"
+              height="1250"
+              loading="lazy"
+            />
+            <figcaption>
+              <strong>M87*</strong> The jet leaves along the pole, at close to the speed of light.
             </figcaption>
           </figure>
         </div>

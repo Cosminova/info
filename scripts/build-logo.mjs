@@ -1,19 +1,22 @@
 /**
  * The mark, and every size the page and the platforms ask for.
  *
- * One shape, defined once here: a sphere lit from the left, with the lit limb
- * running bright at the edge and falling to nothing at the terminator, and the
- * unlit half described only by a faint outline. It is the same thing the
- * renderer spends most of its effort on — a real terminator on a real sphere —
- * which is the argument for it being the logo.
+ * The identity is a lensed black hole: a tilted torus of plasma with twin jets
+ * on the polar axis, and the horizon itself understated at the centre rather
+ * than announced — which is what it looks like when the disc is bright enough
+ * to see, and the reason the reference for this is M87* rather than a diagram.
  *
- * The terminator is very slightly bowed rather than straight. At a phase angle
- * of exactly ninety degrees it would project to a straight line, and a straight
- * line reads as a shape cut in half rather than as a sphere; a few pixels of
- * curvature is what puts the ball back.
+ * It has to exist at two scales, and they cannot be the same artwork:
  *
- * Generated rather than drawn by hand so the favicon, the touch icon and the
- * nav mark cannot drift apart, and so the tint lives in one constant.
+ *   brand   The full render, for the header, the hero and the social card.
+ *           Painterly, hundreds of filaments, jets crossing the frame.
+ *   icon    A vector reduction for a browser tab. At 16 px the filaments alias
+ *           into a smear and the jets vanish, so the mark keeps only what still
+ *           reads at that size: the diagonal of the jets, the ellipse of the
+ *           torus, a hot core and a dark centre.
+ *
+ * Both come from here so they cannot drift apart, and so the palette lives in
+ * one place.
  *
  * Usage: node scripts/build-logo.mjs
  */
@@ -23,72 +26,166 @@ import path from 'node:path';
 import sharp from 'sharp';
 
 const OUT = path.resolve('site/assets');
-fs.mkdirSync(OUT, { recursive: true });
 
-/** The app's own accent, so the site and the thing it advertises agree. */
-const LIT = {
-  hot: '#F2FBFF',
-  bright: '#B6E9FF',
-  accent: '#70D4FF',
-  mid: '#3690CC',
-  fall: '#123049',
-};
+/*
+ * The master render, kept in the repo so every derived size is reproducible —
+ * but outside site/, because build-site.mjs publishes that folder wholesale
+ * and a 400 KB source image nothing links to has no business being served.
+ */
+const BRAND = path.resolve('brand');
+fs.mkdirSync(BRAND, { recursive: true });
+
+const SOURCE =
+  process.env.BLACK_HOLE_SOURCE ??
+  '/Users/grantsu/.cursor/projects/Users-grantsu-Drop/assets/bh-m87-c.png';
+const MASTER = path.join(BRAND, 'black-hole.jpg');
+
+/* ------------------------------------------------------------------ palette */
+
+const HOT = '#FFFBF2';
+const CORE = '#FFE9B8';
+const GOLD = '#FFB04A';
+const ORANGE = '#F5761B';
+const SCARLET = '#D62A0C';
+const CRIMSON = '#7E1206';
 const INK = '#090C14';
-const LIMB_DARK = '#22323F';
 
-// Centre and radius in a 64 unit box. The disc is deliberately not full-bleed:
-// a touch icon gets rounded by the platform and a mark needs air around it.
+/* -------------------------------------------------------------- brand sizes */
+
+if (fs.existsSync(SOURCE)) {
+  // Stored as a high quality JPEG rather than the 1.4 MB PNG: everything below
+  // is derived from it by downscaling, and at q95 the difference is invisible
+  // while the repo stays a tenth of the weight.
+  await sharp(SOURCE).jpeg({ quality: 95, chromaSubsampling: '4:4:4' }).toFile(MASTER);
+} else if (!fs.existsSync(MASTER)) {
+  console.error(`no master render: ${SOURCE} is missing and ${MASTER} does not exist yet`);
+  process.exit(1);
+}
+
+/*
+ * The social card. 1200x630 is what the crawlers expect, and a square render
+ * cropped to it loses the jet tips, so the disc is centred and the crop takes
+ * the middle band — where the core, the torus and both jet roots all sit.
+ */
+const og = path.join(OUT, 'og.jpg');
+await sharp(MASTER)
+  .resize(1200, 630, { fit: 'cover', position: 'centre' })
+  .jpeg({ quality: 86 })
+  .toFile(og);
+console.log(`  og.jpg${' '.repeat(23)} ${(fs.statSync(og).size / 1024).toFixed(0).padStart(5)} KB`);
+
+/* ---------------------------------------------------------------- the icon */
+
+// Centre, and the tilt of the disc. The jets run perpendicular to it, which is
+// what puts them on the opposite diagonal.
 const C = 32;
-const R = 24;
-// Half-width of the terminator ellipse. Small bows it gently into the lit half,
-// which lands the lit fraction just under a half — see scripts/_logo-try.mjs.
-const TERM_RX = 4;
-
-const crescent = `M ${C} ${C - R} A ${R} ${R} 0 0 0 ${C} ${C + R} A ${TERM_RX} ${R} 0 0 1 ${C} ${C - R} Z`;
-
-const gradient = `
-    <linearGradient id="lit" x1="0.13" y1="0.42" x2="0.68" y2="0.60">
-      <stop offset="0" stop-color="${LIT.hot}"/>
-      <stop offset="0.10" stop-color="${LIT.bright}"/>
-      <stop offset="0.34" stop-color="${LIT.accent}"/>
-      <stop offset="0.70" stop-color="${LIT.mid}"/>
-      <stop offset="1" stop-color="${LIT.fall}"/>
-    </linearGradient>`;
+const TILT = -32;
+const JET = TILT + 90;
 
 /**
+ * The vector reduction.
+ *
  * @param {object} [o]
- * @param {boolean} [o.tile]  paint the dark rounded background, for a favicon
- *                            or a touch icon that cannot rely on the page
- * @param {boolean} [o.glow]  add the bloom around the lit limb. Left off for
- *                            the smallest raster, where a blur only smears the
- *                            one edge that has to stay crisp.
+ * @param {boolean} [o.tile]  paint the dark rounded background, for a favicon or
+ *                            a touch icon that cannot rely on the page behind it
+ * @param {boolean} [o.fine]  include the detail that only survives above about
+ *                            48 px: the second torus band and the jet taper
  */
-function mark({ tile = false, glow = true } = {}) {
+function icon({ tile = false, fine = true } = {}) {
+  const discRx = fine ? 25 : 23;
+  const discRy = fine ? 9.5 : 10.5;
+  // Everything the coarse variant does is a trade against averaging. A tab
+  // draws this at 16 px, where each pixel is four units of the viewBox: a
+  // 3 unit horizon lands inside one pixel and comes out as grey rather than
+  // black, and a 1 unit jet disappears entirely. So the horizon grows, the
+  // jets thicken, and the second torus band is dropped rather than being
+  // smeared into the first.
+  const horizon = fine ? 2.9 : 5;
+  const jetHalf = fine ? 1.5 : 2.6;
+  const jetCore = fine ? 0.45 : 1.1;
+  const bandW = fine ? 5.5 : 7.5;
+
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
-  <defs>${gradient}${
-    glow
-      ? `
-    <filter id="bloom" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="2.4"/>
-    </filter>`
-      : ''
-  }
+  <defs>
+    <!-- Outward through the disc: white-hot at the core to crimson at the rim. -->
+    <linearGradient id="torus" x1="0" y1="0.5" x2="1" y2="0.5">
+      <stop offset="0"    stop-color="${CRIMSON}"/>
+      <stop offset="0.18" stop-color="${SCARLET}"/>
+      <stop offset="0.42" stop-color="${ORANGE}"/>
+      <stop offset="0.58" stop-color="${GOLD}"/>
+      <stop offset="0.82" stop-color="${SCARLET}"/>
+      <stop offset="1"    stop-color="${CRIMSON}"/>
+    </linearGradient>
+    <radialGradient id="core" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0"    stop-color="${HOT}"/>
+      <stop offset="0.34" stop-color="${CORE}"/>
+      <stop offset="0.62" stop-color="${GOLD}" stop-opacity="0.85"/>
+      <stop offset="1"    stop-color="${ORANGE}" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="beam" x1="0.5" y1="0" x2="0.5" y2="1">
+      <stop offset="0"    stop-color="${SCARLET}" stop-opacity="0"/>
+      <stop offset="0.28" stop-color="${GOLD}" stop-opacity="0.9"/>
+      <stop offset="0.5"  stop-color="${HOT}"/>
+      <stop offset="0.72" stop-color="${GOLD}" stop-opacity="0.9"/>
+      <stop offset="1"    stop-color="${SCARLET}" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.3"  stop-color="${ORANGE}" stop-opacity="0.42"/>
+      <stop offset="1"    stop-color="${ORANGE}" stop-opacity="0"/>
+    </radialGradient>
   </defs>
+
 ${tile ? `  <rect width="64" height="64" rx="14" fill="${INK}"/>\n` : ''}\
-  <circle cx="${C}" cy="${C}" r="${R}" fill="none" stroke="${LIMB_DARK}" stroke-width="1.4"/>
-${glow ? `  <path d="${crescent}" fill="${LIT.accent}" opacity="0.45" filter="url(#bloom)"/>\n` : ''}\
-  <path d="${crescent}" fill="url(#lit)"/>
+  <circle cx="${C}" cy="${C}" r="30" fill="url(#glow)"/>
+
+  <!-- The jets, on the polar axis. Drawn before the core so they read as
+       emerging from behind it, and tapered because a collimated beam that is
+       the same width along its whole length reads as a drawn line. -->
+  <g transform="rotate(${JET} ${C} ${C})">
+    <path d="M ${C - jetHalf} 2 L ${C + jetHalf} 2 L ${C + jetHalf * 0.45} ${C} L ${C - jetHalf * 0.45} ${C} Z" fill="url(#beam)"/>
+    <path d="M ${C - jetHalf} 62 L ${C + jetHalf} 62 L ${C + jetHalf * 0.45} ${C} L ${C - jetHalf * 0.45} ${C} Z" fill="url(#beam)"/>
+    <rect x="${C - jetCore}" y="3" width="${jetCore * 2}" height="58" fill="url(#beam)"/>
+  </g>
+
+  <!-- The torus, tilted. The far half first, then the core, then the near half
+       over the top of it: that overlap is the whole of the depth cue. -->
+  <g transform="rotate(${TILT} ${C} ${C})">
+    <ellipse cx="${C}" cy="${C}" rx="${discRx}" ry="${discRy}" fill="none"
+             stroke="url(#torus)" stroke-width="${bandW}" opacity="0.55"/>
+${
+  fine
+    ? `    <ellipse cx="${C}" cy="${C}" rx="${discRx - 6}" ry="${discRy - 3}" fill="none"
+             stroke="url(#torus)" stroke-width="3.4" opacity="0.8"/>\n`
+    : ''
+}\
+  </g>
+
+  <ellipse cx="${C}" cy="${C}" rx="${fine ? 11 : 10}" ry="${fine ? 11 : 10}" fill="url(#core)"/>
+
+  <!-- Understated on purpose: bright enough around it that the horizon is a
+       hint of dark at the heart of the light rather than a hole punched in it. -->
+  <circle cx="${C}" cy="${C}" r="${horizon}" fill="#000" opacity="${fine ? 0.92 : 1}"/>
+
+  <g transform="rotate(${TILT} ${C} ${C})">
+    <path d="M ${C - discRx} ${C} A ${discRx} ${discRy} 0 0 0 ${C + discRx} ${C}"
+          fill="none" stroke="url(#torus)" stroke-width="${bandW}" stroke-linecap="round"/>
+  </g>
 </svg>
 `;
 }
 
-/* The mark on its own, for the page to place on whatever it likes. */
-const logo = mark({ tile: false, glow: true });
-fs.writeFileSync(path.join(OUT, 'logo.svg'), logo);
+const flat = icon({ tile: false, fine: true });
+fs.writeFileSync(path.join(OUT, 'logo.svg'), flat);
 
-/* And on its tile, for a browser tab and a home screen. */
-const tiled = mark({ tile: true, glow: true });
+const tiled = icon({ tile: true, fine: true });
 fs.writeFileSync(path.join(OUT, 'favicon.svg'), tiled);
+
+/*
+ * The header draws the mark around 20 px, which is favicon territory rather
+ * than logo territory, so it gets the coarse geometry without the tile behind
+ * it. Same reduction as the 32 px raster, just still resolution independent.
+ */
+fs.writeFileSync(path.join(OUT, 'logo-small.svg'), icon({ tile: false, fine: false }));
 
 /*
  * The app ships its own favicon from public/, and it used to be an unrelated
@@ -99,12 +196,11 @@ const APP = path.resolve('public');
 fs.mkdirSync(APP, { recursive: true });
 fs.writeFileSync(path.join(APP, 'favicon.svg'), tiled);
 
-/*
- * Rasters. A tab favicon is drawn at 16 and 32 and the blur costs more than it
- * gives at that size, so the small ones come from the unblurred shape.
- */
+/* The coarse variant exists for the rasters a tab actually draws. */
+const coarse = icon({ tile: true, fine: false });
+
 const RASTERS = [
-  { file: 'icon-32.png', size: 32, source: mark({ tile: true, glow: false }) },
+  { file: 'icon-32.png', size: 32, source: coarse },
   { file: 'icon-180.png', size: 180, source: tiled },
   { file: 'icon-192.png', size: 192, source: tiled },
   { file: 'icon-512.png', size: 512, source: tiled },
@@ -112,34 +208,45 @@ const RASTERS = [
 
 for (const { file, size, source } of RASTERS) {
   const target = path.join(OUT, file);
-  await sharp(Buffer.from(source), { density: Math.ceil((size / 64) * 96) })
-    .resize(size, size)
-    .png({ compressionLevel: 9 })
-    .toFile(target);
-  console.log(`  ${file.padEnd(14)} ${(fs.statSync(target).size / 1024).toFixed(1).padStart(6)} KB`);
+  await sharp(Buffer.from(source), { density: 900 }).resize(size, size).png({ compressionLevel: 9 }).toFile(target);
+  console.log(`  ${file.padEnd(28)} ${(fs.statSync(target).size / 1024).toFixed(1).padStart(5)} KB`);
 }
 
-console.log(`  logo.svg       ${(fs.statSync(path.join(OUT, 'logo.svg')).size / 1024).toFixed(1).padStart(6)} KB`);
-console.log(`  favicon.svg    ${(fs.statSync(path.join(OUT, 'favicon.svg')).size / 1024).toFixed(1).padStart(6)} KB`);
+console.log(`  logo.svg${' '.repeat(20)} ${(fs.statSync(path.join(OUT, 'logo.svg')).size / 1024).toFixed(1).padStart(5)} KB`);
+console.log(`  favicon.svg${' '.repeat(17)} ${(fs.statSync(path.join(OUT, 'favicon.svg')).size / 1024).toFixed(1).padStart(5)} KB`);
 console.log(`  public/favicon.svg (the app's own, same source)`);
 
-/* A proof sheet, because a logo is only correct if it looks correct. */
+/* ----------------------------------------------------------------- proofing */
+
+/**
+ * Downscale, then magnify with no smoothing, so the sheet shows the pixels a
+ * tab would actually draw.
+ *
+ * Encoded between the two resizes deliberately. Sharp collapses a pipeline to a
+ * single resize, so `.resize(16).resize(200)` renders straight to 200 and the
+ * small size is never exercised at all — which makes every candidate look like
+ * it survives a favicon.
+ */
+async function pixels(source, size, cell) {
+  const shrunk = await sharp(source, { density: 900 }).resize(size, size, { kernel: 'lanczos3' }).png().toBuffer();
+  return sharp(shrunk).resize(cell, cell, { kernel: 'nearest' }).png().toBuffer();
+}
+
 const PROOF = 'shots/logo';
 fs.mkdirSync(PROOF, { recursive: true });
-const sizes = [16, 32, 48, 128, 256];
+const SIZES = [16, 24, 32, 48, 128];
+const CELL = 200;
 const tiles = await Promise.all(
-  sizes.map(async (s, i) => ({
-    input: await sharp(Buffer.from(s <= 32 ? mark({ tile: true, glow: false }) : tiled), { density: 400 })
-      .resize(s, s)
-      .resize(256, 256, { kernel: 'nearest' })
-      .png()
-      .toBuffer(),
-    left: i * 256,
+  SIZES.map(async (s, i) => ({
+    input: await pixels(Buffer.from(s <= 32 ? coarse : tiled), s, CELL),
+    left: i * CELL,
     top: 0,
   })),
 );
-await sharp({ create: { width: sizes.length * 256, height: 256, channels: 3, background: { r: 5, g: 7, b: 12 } } })
+tiles.push({ input: await sharp(MASTER).resize(CELL, CELL).png().toBuffer(), left: SIZES.length * CELL, top: 0 });
+
+await sharp({ create: { width: (SIZES.length + 1) * CELL, height: CELL, channels: 3, background: { r: 5, g: 7, b: 12 } } })
   .composite(tiles)
   .png()
   .toFile(`${PROOF}/proof.png`);
-console.log(`\nproof at ${sizes.join(', ')} px: ${path.resolve(PROOF, 'proof.png')}`);
+console.log(`\nproof at ${SIZES.join(', ')} px, then the brand render: ${path.resolve(PROOF, 'proof.png')}`);
