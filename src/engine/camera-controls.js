@@ -333,7 +333,7 @@ export class OrbitApproachControls {
         // from turning round to look at where it had come from. Yaw and pitch
         // are the view direction here, so they are what a drag moves.
         const lookScale = this.lookSensitivity;
-        this.yaw = wrapAngle(this.yaw - dx * lookScale);
+        this.yaw = wrapAngle(this.yaw + dx * lookScale);
         // Short of straight up: past vertical the view inverts, and with no roll
         // control there is no way to recover an upright horizon from it.
         this.pitch = clamp(this.pitch + dy * lookScale, -1.5533, 1.5533);
@@ -343,21 +343,27 @@ export class OrbitApproachControls {
         this._lastDrag.set(0, 0);
       } else if (this._dragging === 'look' || this.mode === 'fly' || this.earthView || this.riding) {
         const lookScale = this.lookSensitivity;
-        this.lookYaw = clamp(this.lookYaw - dx * lookScale, -2.8, 2.8);
+        // Same convention as the orbit drag above: the view goes with the hand.
+        this.lookYaw = clamp(this.lookYaw + dx * lookScale, -2.8, 2.8);
         this.lookPitch = clamp(this.lookPitch + dy * lookScale, -1.5, 1.5);
       } else {
-        // Horizontal drag turns the camera the way a head turns, rather than
-        // dragging the scene along with the hand: pull the mouse left and the
-        // view swings left, so what you are looking at slides off to the
-        // right. The two conventions are opposites and there is no neutral
-        // choice, so this is the one the app uses.
+        // A drag carries what you are looking at along with the hand, the way
+        // a finger turns a globe: pull left and the body's surface goes left,
+        // pull up and it goes up. The other convention turns the camera
+        // instead, so the scene slides the opposite way; they are opposites
+        // and there is no neutral choice, so this is the one the app uses.
+        //
+        // Both axes have to agree. They did not — vertical dragged the scene
+        // and horizontal turned the camera — and a drag across a planet came
+        // out feeling like the horizontal was inverted, which is exactly how
+        // it was reported.
         //
         // The sign has to match in _lastDrag, which becomes yawVelocity on
         // release — mismatched, the coast at the end of a drag flings the
         // opposite way to the drag itself.
-        this.yaw += dx * scale;
+        this.yaw -= dx * scale;
         this.pitch = wrapAngle(this.pitch + dy * scale);
-        this._lastDrag.set(dx * scale, dy * scale);
+        this._lastDrag.set(-dx * scale, dy * scale);
       }
     });
     const release = (event) => {
@@ -661,11 +667,11 @@ export class OrbitApproachControls {
       // direction itself, which is why a right-drag already does the same thing
       // as a left one there. Two fingers match that rather than inventing a
       // second way to turn.
-      this.yaw = wrapAngle(this.yaw - dMidX * lookScale);
+      this.yaw = wrapAngle(this.yaw + dMidX * lookScale);
       this.pitch = clamp(this.pitch + dMidY * lookScale, -1.5533, 1.5533);
       this._lastDrag.set(0, 0);
     } else {
-      this.lookYaw = clamp(this.lookYaw - dMidX * lookScale, -2.8, 2.8);
+      this.lookYaw = clamp(this.lookYaw + dMidX * lookScale, -2.8, 2.8);
       this.lookPitch = clamp(this.lookPitch + dMidY * lookScale, -1.5, 1.5);
     }
     // Read by two other places: the release path, which must not turn a look
