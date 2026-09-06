@@ -8,6 +8,7 @@
     "dist:win": "npm run build && electron-builder --win --publish never",
     "build:site": "npm run build && node scripts/build-site.mjs",
     "site:stills": "node scripts/site-stills.mjs",
+    "shots:store": "node scripts/store-shots.mjs",
     "build:logo": "node scripts/build-logo.mjs",
     "check:site": "node scripts/site-check.mjs",
     "fetch:assets": "node scripts/fetch-assets.mjs",
