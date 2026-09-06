@@ -112,12 +112,19 @@ function stamp() {
       NORM_MAX_WIDTH,
       RINGS_WIDTH,
       PANORAMA_TIERS,
-      version: 1,
+      // Bumped when what the pass produces changes rather than what it reads
+      // from, so a checkout holding a stamp from before the start screen's
+      // stills were included does not skip copying them.
+      version: 2,
     }),
   );
   // Every file that ends up in the output, by identity rather than content:
   // hashing 159 MB on each build would cost more than the work it saves.
-  for (const full of [...walk(path.join(SRC, 'data')), ...walk(path.join(SRC, 'textures'))].sort()) {
+  for (const full of [
+    ...walk(path.join(SRC, 'data')),
+    ...walk(path.join(SRC, 'textures')),
+    ...walk(path.join(SRC, 'home')),
+  ].sort()) {
     const stat = fs.statSync(full);
     hash.update(`${path.relative(SRC, full)}:${stat.size}:${Math.round(stat.mtimeMs)}`);
   }
@@ -238,6 +245,17 @@ for (const full of walk(path.join(SRC, 'data'))) {
 for (const entry of fs.readdirSync(SRC, { withFileTypes: true })) {
   // Dotfiles are the Finder's business, not the app bundle's.
   if (entry.isFile() && !entry.name.startsWith('.')) place(entry.name);
+}
+
+// The start screen's stills, at full size. Only one of the three is ever
+// fetched in a visit, they are 180 KB between them, and they are what stands
+// on the front door until the scene behind has loaded — which is longest on
+// exactly the devices this set is for. The native apps went without them for a
+// release and showed a bare gradient instead.
+console.log('start screen');
+for (const full of walk(path.join(SRC, 'home'))) {
+  const rel = path.relative(SRC, full);
+  console.log(`  keep  ${rel.padEnd(30)} ${human(place(rel))}`);
 }
 console.log(`  ${String(linked)} files linked or copied`);
 

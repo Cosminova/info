@@ -30,20 +30,19 @@
     </div>
 
     <!--
-      The start screen, over the loading cover, on the web only.
+      The start screen, over the loading cover, on every version of the app.
 
       In the markup rather than built by src/ui/home.js like the rest of the
       interface, because this is the first thing anyone sees and it should be on
       the screen at first paint — not after a megabyte of module has parsed. So
-      it ships visible and the shells take it away: ui/home.js removes it
-      outright when the page is inside the iOS or macOS app, which launched from
-      an icon and has no reason to ask to be started again. What briefly shows
-      there is a dark cover with the app's name on it, which is what the loading
-      cover underneath is showing anyway.
+      it ships visible and ui/home.js decides whether it applies: everything
+      with a person in front of it keeps it, and the capture and check scripts,
+      which drive this page in headless Chrome, have it taken away.
 
       Empty of a backdrop on purpose. Which of the three in public/home is used
-      is decided per visit so that only one is ever fetched, and the gradient
-      below is what stands in until it has decoded.
+      is decided per visit so that only one is ever fetched, the gradient below
+      is what stands in until it has decoded, and once the scene behind is
+      loaded that same shot takes over live — see src/ui/home.js.
     -->
     <div id="home" class="home">
       <div id="home-backdrop" class="home-backdrop"></div>

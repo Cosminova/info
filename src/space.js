@@ -2695,7 +2695,9 @@ $('loading').classList.add('is-done');
 setTimeout(() => {
   $('loading').hidden = true;
   // There is somewhere to go now, so the start screen can offer to take them.
-  home.ready();
+  // Handed the app's own surface so it can frame a subject and turn round it
+  // instead of showing a still of one.
+  home.ready(window.cosminova);
   /*
    * Only after the cover has gone, and only on a first visit — and on the web,
    * not until the start screen has been dismissed. Raising the card behind it

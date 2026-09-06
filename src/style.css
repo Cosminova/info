@@ -443,6 +443,23 @@ html.is-touch .quick-list {
   pointer-events: none;
 }
 
+/* The scene behind has been framed on the same shot as the still, so both the
+   gradient and the photograph get out of its way. Only these two: the vignette
+   and the type stay, because they are what makes a title readable over a lit
+   globe, and that is as true of the live one as of the picture of it. */
+#home.is-live {
+  background: none;
+}
+
+#home.is-live .home-backdrop {
+  opacity: 0;
+  /* Slower than it arrived. Coming in, the picture is replacing an empty
+     gradient and wants to be quick; going out, it is being replaced by the
+     same view alive, and the two should overlap long enough that nothing
+     appears to blink. */
+  transition: opacity 2200ms var(--ease);
+}
+
 .home-backdrop {
   position: absolute;
   inset: 0;
