@@ -1,0 +1,136 @@
+/*
+ * The pages that are read rather than looked at: support and privacy.
+ *
+ * Loaded after styles.css, which supplies the palette, the header and the
+ * footer. Only what a document needs is added here — a measure narrow enough
+ * to read, and headings that separate sections without shouting.
+ *
+ * Deliberately not part of styles.css: that file is the landing page, where
+ * every rule earns its place against a screenshot. None of this is wanted
+ * there, and the landing page's weight is on the critical path.
+ */
+
+.doc {
+  /* 68 characters or so at this size. The landing page's 1180px shell is for
+     images sitting beside text; a paragraph that wide is hard to track back. */
+  width: min(760px, 100% - 3rem);
+  margin: 0 auto;
+  padding: 7rem 0 5rem;
+}
+
+.doc__kicker {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.78rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--amber);
+  margin: 0 0 0.75rem;
+}
+
+.doc h1 {
+  font-size: clamp(2rem, 5vw, 2.9rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin: 0 0 1rem;
+}
+
+.doc__lede {
+  font-size: 1.15rem;
+  color: var(--text-dim);
+  margin: 0 0 3.5rem;
+}
+
+.doc h2 {
+  font-size: 1.35rem;
+  letter-spacing: -0.01em;
+  margin: 3.5rem 0 1rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--line);
+}
+
+.doc h3 {
+  font-size: 1.02rem;
+  margin: 2rem 0 0.5rem;
+}
+
+.doc p,
+.doc li {
+  color: var(--text-dim);
+}
+
+.doc p {
+  margin: 0 0 1.1rem;
+}
+
+.doc ul {
+  margin: 0 0 1.1rem;
+  padding-left: 1.2rem;
+}
+
+.doc li {
+  margin-bottom: 0.5rem;
+}
+
+.doc strong {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.doc a {
+  color: var(--amber);
+  text-decoration-color: var(--amber-glow);
+  text-underline-offset: 3px;
+}
+
+.doc a:hover {
+  color: var(--amber-hot);
+}
+
+/* Keyboard keys and menu paths, which both pages are full of. */
+.doc kbd {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.85em;
+  background: var(--ink-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  padding: 0.1em 0.42em;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+/* A question and its answer, kept together so the eye can skip by question. */
+.faq {
+  border-top: 1px solid var(--line);
+  padding: 1.6rem 0 0.5rem;
+}
+
+.faq:first-of-type {
+  border-top: 0;
+}
+
+.faq h3 {
+  margin-top: 0;
+}
+
+/* The one thing on either page that has to be found without reading: how to
+   reach a human. */
+.doc__card {
+  background: var(--ink-1);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 1.75rem;
+  margin: 0 0 1.5rem;
+}
+
+.doc__card p:last-child {
+  margin-bottom: 0;
+}
+
+.doc__meta {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  margin-top: 4rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--line);
+}

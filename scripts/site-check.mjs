@@ -151,6 +151,44 @@ check(
   'it is a <button> with no href',
 );
 
+/*
+ * Support and privacy have to be reachable from the page, not merely to exist.
+ *
+ * The App Store requires a working privacy policy URL and a support URL, and
+ * checks them; a submission fails without them. Both are linked from the
+ * footer, which is a single line of markup that a redesign would drop without
+ * anything else noticing.
+ */
+const footerLinks = await page.evaluate(() =>
+  [...document.querySelectorAll('.foot__links a')].map((a) => a.getAttribute('href')),
+);
+check(
+  'the footer links to support and privacy',
+  footerLinks.includes('support/') && footerLinks.includes('privacy/'),
+  footerLinks.join(' , ') || 'none found',
+);
+
+/*
+ * And each has to be a page rather than a 404 with a nice URL. The heading is
+ * checked as well as the status because a Pages misconfiguration serves the
+ * landing page, with a 200, for a path that does not exist.
+ */
+for (const [name, subpath, heading] of [
+  ['support', 'support/', 'Getting help with Cosminova'],
+  ['privacy', 'privacy/', 'Privacy policy'],
+]) {
+  const response = await page.goto(new global.URL(subpath, URL).href, {
+    waitUntil: 'domcontentloaded',
+    timeout: 60000,
+  });
+  const h1 = await page.$eval('h1', (el) => el.textContent.trim()).catch(() => null);
+  check(
+    `the ${name} page is served at /${subpath}`,
+    response?.status() === 200 && h1 === heading,
+    `http ${response?.status()}, h1 ${JSON.stringify(h1)}`,
+  );
+}
+
 // The app has to actually be reachable at the subpath the page links to.
 const app = await page.goto(new global.URL('app/index.html', URL).href, {
   waitUntil: 'domcontentloaded',

@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Support — Cosminova</title>
+    <meta
+      name="description"
+      content="Help with Cosminova: system requirements, the function keys on macOS, turning the music off, how to move around, and where to report a problem."
+    />
+    <meta name="theme-color" content="#05070c" />
+
+    <link rel="icon" href="../assets/icon-16.png" sizes="16x16" type="image/png" />
+    <link rel="icon" href="../assets/icon-32.png" sizes="32x32" type="image/png" />
+    <link rel="apple-touch-icon" href="../assets/icon-180.png" />
+
+    <!-- styles.css carries the palette, header and footer; doc.css adds what a
+         page of prose needs. Its own url()s resolve against the stylesheet, so
+         the header mark still finds assets/ from a subdirectory. -->
+    <link rel="stylesheet" href="../styles.css" />
+    <link rel="stylesheet" href="../doc.css" />
+  </head>
+
+  <body>
+    <a class="skip" href="#main">Skip to content</a>
+
+    <header class="nav" id="nav">
+      <div class="nav__inner">
+        <a class="nav__brand" href="../" aria-label="Cosminova home">
+          <span class="nav__mark" aria-hidden="true"></span>
+          <span class="nav__name">COSMINOVA</span>
+        </a>
+        <nav class="nav__links" aria-label="Sections">
+          <a href="../#features">Engine</a>
+          <a href="../#gallery">Gallery</a>
+          <a href="../#data">Data</a>
+          <a class="nav__cta" href="../#download">Download</a>
+        </nav>
+      </div>
+    </header>
+
+    <main class="doc" id="main">
+      <p class="doc__kicker">Support</p>
+      <h1>Getting help with Cosminova</h1>
+      <p class="doc__lede">
+        Most of what people ask about turns out to be one of the five questions below — the function
+        keys in particular, which macOS takes for itself before any app sees them. If none of these
+        is it, the issue tracker is read by the person who wrote the app.
+      </p>
+
+      <div class="doc__card">
+        <h3>Report a problem</h3>
+        <p>
+          Open an issue at
+          <a href="https://github.com/Cosminova/info/issues">github.com/Cosminova/info/issues</a>.
+          It is public, and it goes straight to the developer rather than a queue.
+        </p>
+        <p>
+          What makes a report answerable: your macOS version and Mac model, what you were looking at
+          when it happened, and whether it happens every time. If the picture is wrong rather than
+          missing, a screenshot settles in one second what a paragraph cannot.
+        </p>
+      </div>
+
+      <h2>What it needs to run</h2>
+      <ul>
+        <li><strong>macOS 13 or later</strong>, on Apple silicon or Intel.</li>
+        <li>
+          <strong>A GPU that supports WebGL2.</strong> Every Mac that runs macOS 13 has one. On an
+          Intel Mac with two graphics chips, the app asks for the discrete one, because the scene
+          ray-marches a black hole and the difference is not subtle.
+        </li>
+        <li>
+          <strong>About 165 MB of disk.</strong> The catalogues, imagery and elevation data ship
+          inside the app, which is most of that figure.
+        </li>
+        <li>
+          <strong>No internet connection.</strong> Nothing is streamed and nothing is fetched at
+          runtime. There is also nothing to sign in to.
+        </li>
+      </ul>
+
+      <h2>Common questions</h2>
+
+      <div class="faq">
+        <h3>The function keys do nothing</h3>
+        <p>
+          This is macOS rather than the app, and it catches nearly everyone. By default
+          <kbd>F1</kbd>–<kbd>F12</kbd> are brightness, Mission Control and volume, and the system
+          consumes the keystroke before any application is offered it. An app cannot take them back
+          for itself.
+        </p>
+        <p>Three ways round it, and the last one always works:</p>
+        <ul>
+          <li>Hold <kbd>fn</kbd> while you press the key.</li>
+          <li>
+            Turn on <strong>Use F1, F2, etc. keys as standard function keys</strong> in System
+            Settings → Keyboard, which makes them behave for every app.
+          </li>
+          <li>
+            Use the <strong>Interface</strong> menu in the menu bar. Every panel is on it, and it
+            works no matter what the keyboard is doing.
+          </li>
+        </ul>
+      </div>
+
+      <div class="faq">
+        <h3>How do I turn the music off?</h3>
+        <p>
+          Menu bar → <strong>Interface</strong> → <strong>Music</strong>, or <kbd>F12</kbd>. In the
+          app itself it is in the Display panel (<kbd>F9</kbd>) under <strong>Effects</strong>. The
+          setting is remembered, so it stays off next time.
+        </p>
+      </div>
+
+      <div class="faq">
+        <h3>How do I move around?</h3>
+        <p>
+          <strong>Drag</strong> to swing the view around whatever you have arrived at, and
+          <strong>scroll</strong> to close in — all the way down to standing on the surface. Pick
+          somewhere to go from the Navigation panel (<kbd>F4</kbd>), or search for it with
+          <kbd>F2</kbd>.
+        </p>
+        <p>
+          The Navigation panel also has the four camera modes. <strong>Orbit</strong> circles what
+          you selected, <strong>Track</strong> follows it, <strong>Fly</strong> takes you to it, and
+          <strong>Roam</strong> hands you <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> and
+          lets you move through open space with nothing to orbit and nowhere you cannot go.
+        </p>
+        <p>Press <kbd>F1</kbd> at any point for the full list of controls.</p>
+      </div>
+
+      <div class="faq">
+        <h3>The window is black, or the frame rate is poor</h3>
+        <p>
+          A black window that never fills in means the GPU could not give the app a WebGL2 context.
+          Restarting the app is worth trying first, since a context can be lost when a Mac wakes
+          from sleep.
+        </p>
+        <p>
+          For frame rate: the scene is doing real work, and the two settings that buy the most back
+          are in the Display panel (<kbd>F9</kbd>) — turn <strong>Bloom</strong> off under Effects,
+          and lower the label density. A smaller window helps more than either, because the cost is
+          per pixel.
+        </p>
+      </div>
+
+      <div class="faq">
+        <h3>Is a number in the app wrong?</h3>
+        <p>
+          Please report it. Nothing shown is invented: positions and trajectories come from JPL
+          Horizons, planets from the NASA Exoplanet Archive, galaxies from Cosmicflows-3, RC3 and
+          HyperLEDA, and the Moon's relief from Lunar Orbiter Laser Altimeter data. If a figure
+          disagrees with the catalogue it came from, that is a bug worth a report rather than a
+          difference of opinion.
+        </p>
+      </div>
+
+      <div class="faq">
+        <h3>Is there a version for Windows, or for the browser?</h3>
+        <p>
+          Both.
+          <a
+            href="https://github.com/Cosminova/info/releases/latest/download/Cosminova-Setup.exe"
+            >Download the Windows installer</a
+          >, or <a href="../app/">open it in your browser</a> with no install at all — it needs
+          WebGL2 and nothing else.
+        </p>
+      </div>
+
+      <h2>Privacy</h2>
+      <p>
+        Cosminova collects nothing, and there is no account. The
+        <a href="../privacy/">privacy policy</a> says so in the detail Apple asks for.
+      </p>
+
+      <p class="doc__meta">Last updated 5 September 2026</p>
+    </main>
+
+    <footer class="foot">
+      <div class="foot__inner">
+        <span class="foot__name">COSMINOVA</span>
+        <span class="foot__note">Built with Three.js and WebGL2. No game engine.</span>
+      </div>
+    </footer>
+  </body>
+</html>
