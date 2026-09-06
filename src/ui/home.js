@@ -5,8 +5,8 @@
  * it can be. The still is there at first paint; the scene behind it is a
  * catalogue download and a surface mosaic away, and when it arrives the screen
  * dissolves into the same shot and turns slowly around it — a black hole, a
- * planet, or a horizon at dawn. Tapping stops the turn and hands the view over
- * where it stands, so the app opens on the place it was showing.
+ * planet, or a horizon at dawn. Tapping stops the turn and puts the visitor at
+ * Earth, whichever of the three they were shown.
  *
  * It exists because the web version has a cold start the native apps do not.
  * Opening the app in a browser meant watching a progress bar that, on this
@@ -90,6 +90,28 @@ const LAST_KEY = 'cosminova.home.last';
  * photograph that will not sit still.
  */
 const DRIFT_RATE = 0.026;
+
+/**
+ * Where the gesture goes, whatever was on the screen.
+ *
+ * The screen shows three places and this is none of them. That is deliberate:
+ * the cover is a title card and the app has a beginning, and the beginning is
+ * home — arriving at M87 because that happened to be today's picture is a
+ * strange way to open an atlas of the solar system, and arriving standing on a
+ * dawn horizon is stranger still, since the visitor is then somewhere they
+ * cannot see they are and every control reads oddly for it.
+ *
+ * Framed from the sun's side rather than from wherever the drift had wandered
+ * to, so what appears is a lit three-quarter Earth and not whatever phase the
+ * turn happened to stop on. A quarter of the time that would have been a black
+ * disc.
+ *
+ * Set down rather than flown to. The start screen exists because the app used
+ * to open with the camera already moving, and ending it by handing over a
+ * camera in the middle of a three-second traverse from another galaxy would be
+ * the same fault with a nicer picture in front of it.
+ */
+const ARRIVAL = { key: 'earth', distanceRadii: 3.4, phaseDeg: 35, tiltDeg: 16 };
 
 /**
  * Which subject, avoiding the one before it.
@@ -188,6 +210,13 @@ export function createHome() {
 
   let open = false;
   let drift = 0;
+  /* The app, from `ready`, and the field of view it had before this screen
+     framed anything — put back on the way in so the arrival is the app's own
+     view and not the 38 degrees a black hole was shown at. Held from `ready`
+     rather than from the handover, because the gesture has to reach Earth even
+     when it beats the scene there. */
+  let app = null;
+  let appFov = 0;
   /* The app's surface, once the screen has gone live and hidden its interface —
      and the record that it has to be given back on the way in. */
   let hidden = null;
@@ -260,9 +289,35 @@ export function createHome() {
       hidden = api;
       root.classList.add('is-live');
       startDrift(api);
+      // Earth's near imagery, fetched while the visitor is still reading the
+      // title, because that is where the gesture goes. Last rather than first,
+      // and not waited on: the subject on screen has the bandwidth until it is
+      // up, and if this never finishes the arrival is a softer Earth for a
+      // second or two, which is what flying anywhere in this app looks like.
+      if (subject.detail !== ARRIVAL.key) api.loadDetail?.(ARRIVAL.key);
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Put the visitor at Earth. See ARRIVAL above for why it is always there.
+   *
+   * Wrapped like `goLive` and for the same reason: the screen is on its way out
+   * either way, and a start screen must not be the thing that leaves the app
+   * without a view.
+   */
+  function arrive() {
+    if (!app?.controls) return;
+    try {
+      app.lookFromSun(ARRIVAL.key, ARRIVAL.distanceRadii, ARRIVAL.phaseDeg, ARRIVAL.tiltDeg);
+      // The screen's own field of view goes back to the app's, and the coast
+      // that a drag leaves behind is cleared so the view is still on arrival.
+      if (appFov) app.controls.setFov(appFov);
+      app.controls.stopFlight();
+    } catch {
+      /* Wherever the screen left the camera is still a view of somewhere. */
     }
   }
 
@@ -281,6 +336,9 @@ export function createHome() {
       hidden.setUiVisible?.(true);
       hidden = null;
     }
+    // Behind the cover, which is still opaque for the moment it takes the fade
+    // to start: the change of place is not something to watch happen.
+    arrive();
     root.classList.add('is-going');
     /*
      * Removed a beat after the fade rather than with it. The pointer sequence
@@ -298,12 +356,17 @@ export function createHome() {
    * does the label become an invitation and the cover become clickable.
    *
    * @param {object} [api] the app's own surface, from space.js. Given one, the
-   *   screen dissolves from its photograph into that view, live and turning.
-   *   Without one it stays a photograph, which is what the checks that drive
+   *   screen dissolves from its photograph into that view, live and turning,
+   *   and the gesture arrives at Earth. Without one it stays a photograph and
+   *   the gesture only uncovers the app, which is what the checks that drive
    *   this page before the scene exists rely on.
    */
   function ready(api) {
     open = true;
+    app = api ?? null;
+    // Read before anything here has framed a subject, so this is the app's own
+    // field of view rather than one of the screen's.
+    appFov = api?.controls?.fov ?? 0;
     root.classList.add('is-ready');
     button.classList.add('is-ready');
     button.disabled = false;

@@ -28,6 +28,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import puppeteer from 'puppeteer-core';
+import sharp from 'sharp';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const URL = process.argv[2] ?? process.env.COSMINOVA_URL ?? 'http://127.0.0.1:5179/';
@@ -106,6 +107,13 @@ const state = (page) =>
       // its own picture.
       bare: document.body.classList.contains('immersive'),
       yaw: window.cosminova?.controls?.yaw ?? null,
+      target: window.cosminova?.state?.target ?? null,
+      fov: window.cosminova?.controls?.fov ?? null,
+      distanceRadii: window.cosminova?.controls?.distanceRadii ?? null,
+      // Whether what is on screen is lit, which is the half of "at Earth" that
+      // a target name cannot tell you: arriving on the night side is arriving
+      // at a black disc.
+      groundView: Boolean(window.cosminova?.state?.viewFromEarth),
       backdropLoaded: Boolean(backdrop?.classList.contains('is-loaded')),
       backdropImage: backdrop ? getComputedStyle(backdrop).backgroundImage.slice(0, 60) : '',
       label: button?.textContent.trim() ?? '',
@@ -118,6 +126,62 @@ const state = (page) =>
       })(),
     };
   });
+
+/**
+ * How lit the middle of the frame is, 0 to 1.
+ *
+ * The target's name says the camera is pointed at Earth; it does not say Earth
+ * is lit. Framing it from wherever the drift stopped would put the night side
+ * in front of the camera a good part of the time, and a black disc passes every
+ * assertion that only reads state.
+ */
+/**
+ * How long the cover took to leave, or null if it never did.
+ *
+ * Waited for rather than slept past. The screen fades and is then taken off the
+ * page a beat later, and on the subjects that carry surface imagery the gesture
+ * can land while a texture upload has the main thread — on the software
+ * renderer these checks run on, that is seconds. A fixed wait of 1.4s read the
+ * cover as still there and called it a screen that would not go away, which is
+ * a different fault from a screen that is slow to go and would have sent the
+ * next person looking in the wrong place. The number is reported so that slow
+ * is still visible.
+ */
+async function wentAway(page, timeout = 12000) {
+  const started = Date.now();
+  try {
+    await page.waitForFunction(() => !document.getElementById('home'), { timeout });
+    return Date.now() - started;
+  } catch {
+    return null;
+  }
+}
+
+async function centreBrightness(page) {
+  const shot = await page.screenshot({ type: 'png' });
+  const { width, height } = await sharp(shot).metadata();
+  /*
+   * Cropped into a buffer of its own before being measured.
+   *
+   * `stats()` reads the input image and not the pipeline in front of it, so
+   * chaining it onto `extract` measures the whole frame — and the whole frame
+   * here is one planet in a great deal of empty space, which averages out to
+   * almost nothing whatever the planet is doing. It read 0.055 for a fully lit
+   * Earth and 0.055 with the interface over the top of it, which is the tell:
+   * the same number twice for two different pictures. Cropped properly, that
+   * frame is 0.237.
+   */
+  const centre = await sharp(shot)
+    .extract({
+      left: Math.round(width * 0.3),
+      top: Math.round(height * 0.3),
+      width: Math.round(width * 0.4),
+      height: Math.round(height * 0.4),
+    })
+    .toBuffer();
+  const { channels } = await sharp(centre).stats();
+  return channels.slice(0, 3).reduce((sum, c) => sum + c.mean, 0) / (3 * 255);
+}
 
 // ------------------------------------------------- a visitor, on a desktop
 console.log('\na visitor in a browser');
@@ -154,11 +218,19 @@ console.log('\na visitor in a browser');
 
   // The gesture.
   await page.click('#home');
-  await new Promise((r) => setTimeout(r, 1400));
+  const left = await wentAway(page);
   const after = await state(page);
-  check('clicking takes the screen away', !after.present);
+  check(
+    'clicking takes the screen away',
+    left !== null && !after.present,
+    left === null ? 'still up twelve seconds later' : `gone in ${(left / 1000).toFixed(1)} s`,
+  );
   check('and the first visit gets its welcome card then, not before', after.intro);
   check('the interface is left where the app expects it', !after.bare);
+  // Clicked the moment the way in opened, which on this connection is before
+  // the scene has finished going live. The gesture has to reach Earth anyway —
+  // and this is the path where it can outrun the screen it belongs to.
+  check('an early click still arrives at Earth', after.target === 'earth', `target ${after.target}`);
   check('nothing went wrong', errors.length === 0, errors.slice(0, 2).join(' | '));
   await page.screenshot({ path: path.join(OUT, 'desktop-after.png') });
   await page.close();
@@ -182,8 +254,12 @@ console.log('\na visitor on a phone');
   await page.screenshot({ path: path.join(OUT, 'phone.png') });
 
   await page.tap('#home');
-  await new Promise((r) => setTimeout(r, 1400));
-  check('tapping takes it away', !(await state(page)).present);
+  const left = await wentAway(page);
+  check(
+    'tapping takes it away',
+    left !== null,
+    left === null ? 'still up twelve seconds later' : `gone in ${(left / 1000).toFixed(1)} s`,
+  );
   check('nothing went wrong', errors.length === 0, errors.slice(0, 2).join(' | '));
   await page.close();
 }
@@ -215,8 +291,12 @@ console.log('\na visitor on an iPad, in Safari');
   await page.screenshot({ path: path.join(OUT, 'ipad.png') });
 
   await page.tap('#home');
-  await new Promise((r) => setTimeout(r, 1400));
-  check('tapping takes it away', !(await state(page)).present);
+  const left = await wentAway(page);
+  check(
+    'tapping takes it away',
+    left !== null,
+    left === null ? 'still up twelve seconds later' : `gone in ${(left / 1000).toFixed(1)} s`,
+  );
   check('nothing went wrong', errors.length === 0, errors.slice(0, 2).join(' | '));
   await page.close();
 }
@@ -251,8 +331,12 @@ console.log('\ninside the iOS app');
   await page.screenshot({ path: path.join(OUT, 'ios.png') });
 
   await page.tap('#home');
-  await new Promise((r) => setTimeout(r, 1400));
-  check('tapping takes it away', !(await state(page)).present);
+  const left = await wentAway(page);
+  check(
+    'tapping takes it away',
+    left !== null,
+    left === null ? 'still up twelve seconds later' : `gone in ${(left / 1000).toFixed(1)} s`,
+  );
   check('nothing went wrong', errors.length === 0, errors.slice(0, 2).join(' | '));
   await page.close();
 }
@@ -299,17 +383,58 @@ for (const subject of ['m87', 'saturn', 'earth-ground']) {
   await page.screenshot({ path: path.join(OUT, `live-${subject}.png`) });
 
   await page.click('#home');
-  await new Promise((r) => setTimeout(r, 1200));
+  const left = await wentAway(page);
   const held = await state(page);
-  check(`${subject}: going in gives the interface back`, !held.present && !held.bare);
+  check(
+    `${subject}: going in gives the interface back`,
+    left !== null && !held.bare,
+    left === null ? 'the screen never left' : `gone in ${(left / 1000).toFixed(1)} s`,
+  );
+  /*
+   * The whole point of the gesture, and the reason it is asserted for each
+   * subject rather than once: the screen leaves the camera at a black hole, at
+   * Saturn, or standing on a dawn horizon, and all three have to end up in the
+   * same place. The horizon is the one that would go unnoticed — the target is
+   * already `earth` while standing on it, so the distance is what says whether
+   * the visitor is looking at the planet or standing on it.
+   */
+  check(
+    `${subject}: the gesture arrives at Earth`,
+    held.target === 'earth' && !held.groundView && Math.abs(held.distanceRadii - 3.4) < 0.2,
+    `target ${held.target}, ${held.distanceRadii?.toFixed(2)} radii out`,
+  );
+  check(
+    `${subject}: at the app's own field of view, not the screen's`,
+    Math.abs(held.fov - 52) < 0.01,
+    `${held.fov?.toFixed(1)} deg`,
+  );
+  /*
+   * Measured with the interface out of the way.
+   *
+   * The middle of the frame is where Earth is and also where the first visit's
+   * welcome card is, and the card is a dark panel: this read 0.047 at every
+   * subject and was reporting the colour of the card over a perfectly lit
+   * planet. Immersive mode takes the whole interface off, which leaves the
+   * scene, which is what the question was about.
+   */
+  await page.evaluate(() => window.cosminova.setUiVisible(false));
+  await new Promise((r) => setTimeout(r, 250));
+  const lit = await centreBrightness(page);
+  // Photographed in the same state it was measured in, so the number and the
+  // picture beside it are of the same thing.
+  await page.screenshot({ path: path.join(OUT, `arrived-${subject}.png`) });
+  await page.evaluate(() => window.cosminova.setUiVisible(true));
+  check(`${subject}: with a lit Earth in the frame`, lit > 0.06, `centre at ${lit.toFixed(3)}`);
+
   // The turn is the screen's, not the app's: left running, the camera would go
   // on walking round the body under the visitor's hands.
+  const before = await page.evaluate(() => window.cosminova.controls.yaw);
   await new Promise((r) => setTimeout(r, 1500));
   const settled = await page.evaluate(() => window.cosminova.controls.yaw);
   check(
     `${subject}: and stops the turn on the way`,
-    Math.abs(settled - held.yaw) < 0.005,
-    `${(settled - held.yaw).toFixed(4)} rad after`,
+    Math.abs(settled - before) < 0.005,
+    `${(settled - before).toFixed(4)} rad after`,
   );
   check('nothing went wrong', errors.length === 0, errors.slice(0, 2).join(' | '));
   await page.close();
