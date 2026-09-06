@@ -8,6 +8,41 @@
  * documenting the keys separately and drifting out of date.
  */
 
+import { platform } from '../engine/platform.js';
+
+/**
+ * The function row does not exist on a phone, and on the tablet keyboards that
+ * have one at all it is the exception rather than the rule. That makes an F-key
+ * default worse than merely unpressable on touch: this registry is what fills
+ * the rail's tooltips, the help table and the rebinding list, so a key nobody
+ * can press gets advertised in three places as though it were the way in.
+ *
+ * Almost all of these actions open a panel or a dialog the rail already reaches
+ * with a tap, which is why most of them become unset here rather than moving to
+ * some invented chord — a made-up shortcut nobody can guess is not a
+ * replacement, it is another thing to document. The three that keep a binding
+ * are the three where a convention already exists and an iPad with a keyboard
+ * attached will expect it.
+ */
+const TOUCH_BINDINGS = {
+  'open.search': 'Meta+K',
+  'open.help': 'Meta+/',
+  'open.settings': 'Meta+,',
+};
+
+const FUNCTION_KEY = /^F([1-9]|1[0-2])$/;
+
+/**
+ * Only F keys are rewritten. The letter and punctuation bindings are left alone
+ * because a keyboard attached to an iPad can produce them, and on a phone they
+ * cost nothing: an action with a binding nobody presses still works from the
+ * interface.
+ */
+function defaultKey(id, key) {
+  if (!platform.touch || !FUNCTION_KEY.test(key ?? '')) return key;
+  return TOUCH_BINDINGS[id] ?? '';
+}
+
 /** Normalise a KeyboardEvent into the form used for bindings, e.g. 'Shift+F'. */
 export function chord(event) {
   const parts = [];
@@ -41,7 +76,9 @@ export function createShortcuts(prefs) {
    * rather than everything at once.
    */
   function register({ id, key, label, group = 'General', run, when = null, allowInInput = false }) {
-    actions.set(id, { id, key, label, group, run, when, allowInInput });
+    // Call sites declare the desktop key; the platform substitution happens
+    // here so that neither view has to know which keys the device has.
+    actions.set(id, { id, key: defaultKey(id, key), label, group, run, when, allowInInput });
   }
 
   function binding(id) {

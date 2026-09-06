@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>$(PRODUCT_NAME)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Cosminova</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>MinimumOSVersion</key>
+	<string>$(IPHONEOS_DEPLOYMENT_TARGET)</string>
+
+	<!--
+	  False is accurate only while the app implements no cryptography and makes
+	  no outbound requests: every catalogue and texture loads from the bundle
+	  over a relative path, so the TLS stack is never reached. Adding any
+	  network call means revisiting this and the export-compliance answers in
+	  App Store Connect.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!--
+	  No scene manifest, which is what puts UIKit on the application-delegate
+	  lifecycle and gives AppDelegate its own window. The app has exactly one
+	  window showing exactly one renderer, and there is nothing a session could
+	  restore that is cheaper than loading the scene again, so the second
+	  lifecycle would be ceremony around a single view controller.
+	-->
+
+	<!--
+	  Hidden and staying hidden. The false below is the half that matters: with
+	  the view-controller-based appearance on, UIKit would ask the root
+	  controller and re-run the transition on every rotation, which shows as a
+	  flicker over a scene that is otherwise edge to edge.
+	-->
+	<key>UIStatusBarHidden</key>
+	<true/>
+	<key>UIViewControllerBasedStatusBarAppearance</key>
+	<false/>
+
+	<!--
+	  A black hole ray-marched at 30 fps does not want to be re-laid-out because
+	  a phone was tipped upside down, so portrait-upside-down is left off the
+	  handset. An iPad has no such convention and is used in a stand, so it
+	  takes all four.
+	-->
+	<key>UISupportedInterfaceOrientations</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+	<key>UISupportedInterfaceOrientations~ipad</key>
+	<array>
+		<string>UIInterfaceOrientationPortrait</string>
+		<string>UIInterfaceOrientationPortraitUpsideDown</string>
+		<string>UIInterfaceOrientationLandscapeLeft</string>
+		<string>UIInterfaceOrientationLandscapeRight</string>
+	</array>
+
+	<!--
+	  The colour, and nothing else. The scene fades up from black, and a launch
+	  screen that showed the default system background would flash white on the
+	  way in — the one thing the shell spends its Swift avoiding.
+	-->
+	<key>UILaunchScreen</key>
+	<dict>
+		<key>UIColorName</key>
+		<string>LaunchBackground</string>
+	</dict>
+</dict>
+</plist>

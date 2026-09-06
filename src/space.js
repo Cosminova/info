@@ -60,9 +60,20 @@ import { CRAFT_KINDS, DATA_TIERS } from './engine/craft-missions.js';
 import { formatDistance, PC_KM, SOLAR_RADIUS_KM, equatorialToEcliptic } from './engine/units.js';
 import { equatorialToVector } from './astro.js';
 import { createExplorerUI } from './ui/explorer-ui.js';
+import { createHome } from './ui/home.js';
+import { basePixelRatio, capTextureWidth, platform } from './engine/platform.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+/*
+ * Built before anything else in this file, because its first job is to take
+ * itself away again: the start screen ships in the markup so that it is on the
+ * screen at first paint, which means the hosts it does not apply to — the iOS
+ * and macOS apps, and every capture script — are relying on this to remove it.
+ * The sooner that is settled the less of it they see.
+ */
+const home = createHome();
 
 const MAJOR = new Set([
   'sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn',
@@ -113,7 +124,11 @@ let ui = null;
 const canvas = $('view');
 const renderer = new WebGLRenderer({
   canvas,
-  antialias: true,
+  // Off on mobile. Multisampling costs bandwidth in proportion to the frame,
+  // which is the one resource a phone has least of, and this scene's edges are
+  // mostly limb curves against black that the bloom and dither passes already
+  // soften. Losing it buys resolution, which is worth more here.
+  antialias: platform.antialias,
   logarithmicDepthBuffer: true,
   powerPreference: 'high-performance',
 });
@@ -121,7 +136,7 @@ const renderer = new WebGLRenderer({
 // Deferred so a machine that cannot hold 60 fps never has to draw a full
 // resolution frame to find that out.
 const quality = createQuality({ onResolutionChange: () => resize() });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2) * quality.renderScale);
+renderer.setPixelRatio(basePixelRatio() * quality.renderScale);
 renderer.outputColorSpace = SRGBColorSpace;
 renderer.toneMapping = ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1;
@@ -193,7 +208,7 @@ const deepField = new DeepField({
   catalog: data.catalog,
   galaxies: data.galaxies,
   colorLookup,
-  maxPointSize: 90,
+  maxPointSize: platform.maxPointSize,
 });
 for (const object of deepField.objects) scene.add(object);
 
@@ -374,7 +389,7 @@ await Promise.all([
 
 const upgraded = new Set();
 function considerUpgrade(key, apparentPixels) {
-  if (upgraded.has(key) || apparentPixels < 160) return;
+  if (upgraded.has(key) || apparentPixels < platform.nearUpgradePixels) return;
   upgraded.add(key);
   const kinds = Object.keys(textures.manifest?.[key] ?? {}).filter((k) => k !== 'dem');
   textures.ensureNear(key, kinds).then(() => {
@@ -1276,7 +1291,7 @@ composer.addPass(dither.pass);
 function resize() {
   const width = window.innerWidth;
   const height = window.innerHeight;
-  const ratio = Math.min(window.devicePixelRatio, 2) * quality.renderScale;
+  const ratio = basePixelRatio() * quality.renderScale;
   renderer.setPixelRatio(ratio);
   renderer.setSize(width, height, false);
   composer.setPixelRatio(ratio);
@@ -1980,10 +1995,10 @@ function frame(now) {
     }
 
     if (planet.spec.dem) {
-      const wanted = Math.min(planet.desiredDemWidth(), 4096);
+      const wanted = capTextureWidth(planet.desiredDemWidth(), 'dem');
       const level = textures.demLevel(key, wanted);
       if (level) planet.setDemMap(level.texture, level.info);
-      const normals = textures.level(key, 'norm', Math.min(wanted * 2, 8192));
+      const normals = textures.level(key, 'norm', capTextureWidth(wanted * 2, 'norm'));
       if (normals) planet.setNormalMap(normals.texture);
     }
 
@@ -2657,6 +2672,13 @@ window.cosminova = {
       quality: quality.level,
       renderScale: quality.renderScale,
       preset: quality.settings.preset,
+      // The device profile is reported because it is otherwise invisible: it
+      // decides shader loop bounds and buffer sizes before the first frame, so
+      // by the time anything is measurable the evidence of it is gone.
+      deviceClass: platform.deviceClass,
+      shell: platform.shell,
+      targetFps: quality.settings.targetFps,
+      maxRenderScale: quality.settings.maxRenderScale,
     };
   },
 };
@@ -2670,7 +2692,15 @@ ui.syncCamera();
 $('loading').classList.add('is-done');
 setTimeout(() => {
   $('loading').hidden = true;
-  // Only after the cover has gone, and only on a first visit.
-  ui.showIntroIfNew?.();
+  // There is somewhere to go now, so the start screen can offer to take them.
+  home.ready();
+  /*
+   * Only after the cover has gone, and only on a first visit — and on the web,
+   * not until the start screen has been dismissed. Raising the card behind it
+   * meant a first-time visitor tapped to start and arrived to find a dialog
+   * already open over the view they had just asked to see. Without a start
+   * screen this resolves immediately and the timing is what it always was.
+   */
+  home.whenStarted.then(() => ui.showIntroIfNew?.());
 }, 400);
 requestAnimationFrame(frame);

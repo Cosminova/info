@@ -13,6 +13,7 @@ import {
 } from 'three';
 import { galacticToEquatorial } from '../astro.js';
 import { equatorialToEcliptic, KPC_KM, MPC_KM, PC_KM } from './units.js';
+import { platform } from './platform.js';
 
 const MAG_TO_LOG2_FLUX = 1.3287712;
 
@@ -533,7 +534,7 @@ export class DeepField {
   }
 
   _buildMilkyWay() {
-    const count = 72000;
+    const count = platform.milkyWayParticles;
     const random = mulberry32(0x4d696c6b);
     const positions = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);
@@ -619,7 +620,7 @@ export class DeepField {
   }
 
   _buildHostStars() {
-    const count = 62000;
+    const count = platform.hostGalaxyStars;
     const random = mulberry32(0x53746172);
     const local = new Float32Array(count * 3);
     const colors = new Float32Array(count * 3);

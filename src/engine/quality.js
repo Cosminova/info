@@ -17,7 +17,12 @@
  * just drew tells you what the machine does with this scene at this altitude,
  * which is the only question that matters, and it keeps working when the answer
  * changes halfway through a descent.
+ *
+ * The device profile in platform.js sets where this loop starts and how far it
+ * is allowed to climb. The split between the two files is whether a cost can be
+ * changed mid-flight: everything here can, and everything there cannot.
  */
+import { platform } from './platform.js';
 
 /**
  * Levels run 0 (cheapest) to 1 (everything on). The mapping is deliberately not
@@ -67,9 +72,13 @@ export function createQuality({ onResolutionChange } = {}) {
   const settings = {
     /** 'auto' | 'low' | 'medium' | 'high' | 'ultra' */
     preset: 'auto',
-    targetFps: 60,
+    // Thirty on a phone. This scene is fragment-bound, so the second half of a
+    // 60 fps budget is paid for out of resolution, and a sharp thirty reads
+    // better at arm's length than a soft sixty — and does not cook the device
+    // into throttling a few minutes in, which looks worse than either.
+    targetFps: platform.targetFps,
     /** Ceiling the auto loop may not climb past, and the value manual mode uses. */
-    maxRenderScale: 1,
+    maxRenderScale: platform.maxRenderScale,
   };
 
   let level = 0.75;

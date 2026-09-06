@@ -1,6 +1,7 @@
 import { Color, DoubleSide, Mesh, RingGeometry, ShaderMaterial, Sphere, Vector3 } from 'three';
 
 import { SHADOW_GLSL } from './shadow-glsl.js';
+import { platform } from './platform.js';
 
 /**
  * Planetary rings as real geometry in the equatorial plane.
@@ -201,7 +202,7 @@ export function createRings({
   // tops, which is where the spacecraft imagery puts them.
   multipleScattering = 4.2,
 }) {
-  const geometry = new RingGeometry(innerKm, outerKm, 512, 8);
+  const geometry = new RingGeometry(innerKm, outerKm, platform.ringSegments, 8);
   // RingGeometry is built in the XY plane; rings belong in the equator.
   geometry.rotateX(-Math.PI / 2);
   geometry.boundingSphere = new Sphere(new Vector3(), outerKm);

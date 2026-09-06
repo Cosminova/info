@@ -16,6 +16,31 @@
  */
 
 import { el } from './dom.js';
+import { platform } from '../engine/platform.js';
+
+/**
+ * The same three things, in the same order, in the words of the device holding
+ * them.
+ *
+ * Two versions rather than one hedged version. A card that says "click or tap"
+ * and "scroll or pinch" throughout is longer, reads as a manual, and tells
+ * everyone half a sentence they cannot act on — which is the opposite of the
+ * point, since the card exists because the first move was not obvious. The
+ * third step is the one that changes most: there are no keys to name, so it
+ * names the thing that appears when you switch to Roam instead. sky.html
+ * already says "pinch to zoom", so the vocabulary is the project's own.
+ */
+const STEPS_POINTER = [
+  ['Go somewhere', 'Click a name under Destinations, or search for one. Everything you can see is somewhere you can travel to.'],
+  ['Look around', 'Drag to swing around what you have arrived at. Scroll to close in, all the way down to standing on the surface.'],
+  ['Fly it yourself', 'Switch the camera to Roam and W A S D moves you through open space, with nothing to orbit and nowhere you cannot go.'],
+];
+
+const STEPS_TOUCH = [
+  ['Go somewhere', 'Tap a name under Destinations, or search for one. Everything you can see is somewhere you can travel to.'],
+  ['Look around', 'Drag to swing around what you have arrived at. Pinch to close in, all the way down to standing on the surface.'],
+  ['Fly it yourself', 'Switch the camera to Roam and the flight pad moves you through open space, with nothing to orbit and nowhere you cannot go.'],
+];
 
 /**
  * @param {object} config
@@ -24,11 +49,7 @@ import { el } from './dom.js';
  * @param {() => void} config.onGuide   Open the full guide.
  */
 export function createIntro({ prefs, onStart, onGuide }) {
-  const STEPS = [
-    ['Go somewhere', 'Click a name under Destinations, or search for one. Everything you can see is somewhere you can travel to.'],
-    ['Look around', 'Drag to swing around what you have arrived at. Scroll to close in, all the way down to standing on the surface.'],
-    ['Fly it yourself', 'Switch the camera to Roam and W A S D moves you through open space, with nothing to orbit and nowhere you cannot go.'],
-  ];
+  const STEPS = platform.touch ? STEPS_TOUCH : STEPS_POINTER;
 
   const root = el('div', { class: 'intro takes-pointer', hidden: true }, [
     el('div', { class: 'intro-card' }, [
@@ -61,7 +82,7 @@ export function createIntro({ prefs, onStart, onGuide }) {
           type: 'button',
           class: 'btn',
           text: 'Full guide',
-          dataset: { tip: 'Every control, and the keys they are on' },
+          dataset: { tip: platform.touch ? 'Every gesture, and what it does' : 'Every control, and the keys they are on' },
           onClick: () => {
             dismiss();
             onGuide?.();

@@ -12,6 +12,7 @@ import {
   illuminatedFraction,
   reflectedFraction,
 } from './engine/shadow-glsl.js';
+import { capTextureWidth } from './engine/platform.js';
 
 const DEG = Math.PI / 180;
 const AU_KM = 149597870.7;
@@ -459,9 +460,9 @@ export class ResolvedBodies {
       const wanted = Math.min(8192, 2 ** Math.ceil(Math.log2(Math.max(apparentPixels * 4, 64))));
       const colour = this.textures.level(body.key, 'colour', wanted);
       if (colour) planet.setColourMap(colour.texture);
-      const dem = this.textures.demLevel(body.key, wanted);
+      const dem = this.textures.demLevel(body.key, capTextureWidth(wanted, 'dem'));
       if (dem) planet.setDemMap(dem.texture, dem.info);
-      const normals = this.textures.level(body.key, 'norm', Math.min(wanted * 2, 8192));
+      const normals = this.textures.level(body.key, 'norm', capTextureWidth(wanted * 2, 'norm'));
       if (normals) planet.setNormalMap(normals.texture);
     }
 

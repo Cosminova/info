@@ -29,6 +29,33 @@
       </div>
     </div>
 
+    <!--
+      The start screen, over the loading cover, on the web only.
+
+      In the markup rather than built by src/ui/home.js like the rest of the
+      interface, because this is the first thing anyone sees and it should be on
+      the screen at first paint — not after a megabyte of module has parsed. So
+      it ships visible and the shells take it away: ui/home.js removes it
+      outright when the page is inside the iOS or macOS app, which launched from
+      an icon and has no reason to ask to be started again. What briefly shows
+      there is a dark cover with the app's name on it, which is what the loading
+      cover underneath is showing anyway.
+
+      Empty of a backdrop on purpose. Which of the three in public/home is used
+      is decided per visit so that only one is ever fetched, and the gradient
+      below is what stands in until it has decoded.
+    -->
+    <div id="home" class="home">
+      <div id="home-backdrop" class="home-backdrop"></div>
+      <div class="home-inner">
+        <h1 class="home-title">COSMINOVA</h1>
+        <p class="home-tagline">Fly real worlds, to scale</p>
+        <button type="button" id="home-start" class="home-start" disabled>
+          getting the universe ready…
+        </button>
+      </div>
+    </div>
+
     <script type="module" src="src/space.js"></script>
   </body>
 </html>

@@ -70,6 +70,27 @@
 
   --blur: blur(14px) saturate(1.1);
   --edge: calc(12px * var(--ui-scale));
+  /*
+     Edge padding, per side, because on a phone the four sides are not the same.
+     A notch eats the top, a home indicator eats the bottom, and in landscape the
+     notch moves to whichever side the camera ended up on — so a single margin
+     cannot satisfy all four and something ends up underneath the hardware.
+
+     `env()` is the only thing that knows where the hardware is, and it resolves
+     to zero everywhere there is none: on a desktop these are exactly `--edge`,
+     which is why the regions below can use them unconditionally rather than
+     behind a media query that would also catch a touchscreen laptop. The
+     explicit `0px` fallback covers a browser that has env() but not this inset.
+
+     They are only non-zero if the document asks for the full screen with
+     `viewport-fit=cover`; explorer-ui.js does that on touch, since without it
+     the browser insets the whole viewport instead and there is nothing to
+     compensate for.
+  */
+  --edge-top: calc(var(--edge) + env(safe-area-inset-top, 0px));
+  --edge-right: calc(var(--edge) + env(safe-area-inset-right, 0px));
+  --edge-bottom: calc(var(--edge) + env(safe-area-inset-bottom, 0px));
+  --edge-left: calc(var(--edge) + env(safe-area-inset-left, 0px));
   --rail-w: calc(42px * var(--ui-scale));
   /* Trimmed from 178px. The rail now opens by default, so its width is spent on
      every visit rather than only when someone asks for it, and it is spent out
@@ -203,16 +224,16 @@ body {
   pointer-events: auto;
 }
 
-.region-top { grid-area: top; display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--edge); }
-.region-left { grid-area: left; display: flex; align-items: center; gap: var(--sp-3); padding: 0 0 0 var(--edge); min-height: 0; }
+.region-top { grid-area: top; display: flex; align-items: flex-start; gap: var(--sp-3); padding: var(--edge-top) var(--edge-right) var(--edge) var(--edge-left); }
+.region-left { grid-area: left; display: flex; align-items: center; gap: var(--sp-3); padding: 0 0 0 var(--edge-left); min-height: 0; }
 /* Panels stack downward beside the rail. `min-height: 0` and the scroll are what
    keep a tall stack from growing the grid row and pushing the bottom bar off. */
 .region-left > .dock,
 .region-right > .dock { display: flex; flex-direction: column; gap: var(--sp-3); min-height: 0; max-height: 100%; overflow-y: auto; scrollbar-width: none; }
 .region-left > .dock::-webkit-scrollbar,
 .region-right > .dock::-webkit-scrollbar { display: none; }
-.region-right { grid-area: right; display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-3); padding: 0 var(--edge); min-height: 0; overflow: hidden; }
-.region-bottom { grid-area: bottom; display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-3); padding: var(--edge); flex-wrap: wrap; }
+.region-right { grid-area: right; display: flex; flex-direction: column; align-items: flex-end; gap: var(--sp-3); padding: 0 var(--edge-right); min-height: 0; overflow: hidden; }
+.region-bottom { grid-area: bottom; display: flex; align-items: flex-end; justify-content: space-between; gap: var(--sp-3); padding: var(--edge) var(--edge-right) var(--edge-bottom) var(--edge-left); flex-wrap: wrap; }
 .region-center { grid-area: center; position: relative; }
 
 /* --------------------------------------------------------------------- panel */
@@ -762,7 +783,10 @@ input[type='datetime-local'] {
   animation: panel-in var(--t-mid) var(--ease);
   display: flex;
   flex-direction: column;
-  max-height: min(78vh, calc(100vh - 2 * var(--edge)));
+  /* Per-side rather than twice the margin, so a dialogue on a phone clears the
+     notch above it and the home indicator below it. Identical on a desktop,
+     where both insets are zero. */
+  max-height: min(78vh, calc(100vh - var(--edge-top) - var(--edge-bottom)));
 }
 
 .dialog-head {
@@ -795,13 +819,13 @@ input[type='datetime-local'] {
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  width: min(calc(680px * var(--ui-scale)), calc(100vw - 2 * var(--edge)));
+  width: min(calc(680px * var(--ui-scale)), calc(100vw - var(--edge-left) - var(--edge-right)));
 }
 
 .dialog.is-right {
-  right: var(--edge);
-  top: calc(var(--edge) + 44px * var(--ui-scale));
-  width: min(calc(420px * var(--ui-scale)), calc(100vw - 2 * var(--edge)));
+  right: var(--edge-right);
+  top: calc(var(--edge-top) + 44px * var(--ui-scale));
+  width: min(calc(420px * var(--ui-scale)), calc(100vw - var(--edge-left) - var(--edge-right)));
 }
 
 /* ------------------------------------------------------------------ top bar */
@@ -1701,7 +1725,9 @@ body.immersive .label-layer {
 .immersive-hint {
   position: fixed;
   left: 50%;
-  bottom: var(--sp-5);
+  /* Clear of the home indicator, which sits exactly here and would otherwise be
+     drawn straight through the one line of text telling you how to get out. */
+  bottom: calc(var(--sp-5) + env(safe-area-inset-bottom, 0px));
   transform: translateX(-50%);
   z-index: 60;
   font-size: var(--fs-tiny);
@@ -1727,6 +1753,57 @@ body.immersive .immersive-hint {
   8% { opacity: 1; }
   60% { opacity: 1; }
   100% { opacity: 0; }
+}
+
+/*
+ * On a touch device the hint is the way out rather than a note about it.
+ *
+ * Immersive mode is entered by a button and left by F11, and a phone has no F
+ * keys — so the mode was a trap: everything that could restore the interface had
+ * just been faded out and made unclickable. The way out has to be something
+ * still on screen, which means the hint cannot fade to nothing the way it does
+ * on a desktop, where it fades precisely so it stays out of the screenshot the
+ * mode exists to enable. A quarter of an opacity is the compromise: legible
+ * enough to find, faint enough to ignore. explorer-ui.js adds the class and
+ * makes it tappable; see the immersive section there.
+ */
+body.immersive .immersive-hint.is-touch {
+  animation: hint-settle 5s var(--ease) forwards;
+  pointer-events: auto;
+  /* Comfortably tappable rather than a one-line strip of small caps. */
+  padding: var(--sp-2) var(--sp-5);
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-1);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+}
+
+@keyframes hint-settle {
+  0% { opacity: 0; }
+  8% { opacity: 1; }
+  60% { opacity: 1; }
+  100% { opacity: 0.26; }
+}
+
+/*
+ * Both spellings of the hint, silenced.
+ *
+ * Set when the interface was hidden programmatically rather than by somebody
+ * pressing the button — see setImmersive in ui/explorer-ui.js for why a capture
+ * script must not be handed this. Last of the three on purpose: it has the same
+ * specificity as the touch rule above and has to win.
+ */
+body.immersive .immersive-hint.is-silent,
+body.immersive .immersive-hint.is-touch.is-silent {
+  animation: none;
+  opacity: 0;
+  /* The touch rule makes the hint the way out of immersive mode, and an
+     invisible way out is a trap for anything still clicking around. */
+  pointer-events: none;
 }
 
 /* -------------------------------------------------------------------- loading */
@@ -1780,6 +1857,149 @@ body.immersive .immersive-hint {
   transition: width var(--t-mid) var(--ease);
 }
 
+/* ----------------------------------------------------------------- touch
+
+   Everything that has to grow because it is being pressed with a finger rather
+   than pointed at with a cursor, on any size of touch screen.
+
+   Split from the width tiers below on purpose. An iPad is a thousand points
+   across and its buttons need to be exactly as big as a phone's; a desktop
+   window dragged down to phone width is still being driven by a mouse and
+   should keep the compact controls the interface was designed with. Those are
+   two separate questions, and asking them both with a width gets one of them
+   wrong whichever answer you pick. The class comes from platform.js by way of
+   ui/explorer-ui.js and src/controls.js, so it can never appear on a desktop.
+
+   44 points is Apple's floor and it is a real one: this interface is
+   deliberately small, because it is an instrument laid over a view and every
+   pixel it takes is a pixel of universe, and at 24 points its icon buttons are
+   half a fingertip. They are grown with a minimum size rather than by turning up
+   --ui-scale, which would inflate the type and the panels along with them and
+   give back less scene than the targets gained. */
+
+html.is-touch {
+  /* The rail's items are its width less its padding, so a 42-point rail gives
+     28-point items — for the strip that opens every panel in the app. */
+  --rail-w: calc(56px * var(--ui-scale));
+}
+
+html.is-touch .region-top .btn,
+html.is-touch .region-bottom .btn,
+html.is-touch .dialog .btn,
+html.is-touch .intro-actions .btn,
+html.is-touch .segmented button,
+html.is-touch .rail-item,
+html.is-touch .time-step {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+html.is-touch .region-top .btn.is-icon,
+html.is-touch .region-bottom .btn.is-icon,
+html.is-touch .dialog .btn.is-icon {
+  width: 44px;
+  height: 44px;
+}
+
+/* A result row is a name over a class in nine-point type, which comes to 34
+   points of a list you are meant to hit exactly one item of. */
+html.is-touch .search-row {
+  min-height: 44px;
+}
+
+/* The row is already 44 points tall, so the buttons in it can have all of that
+   height for nothing. */
+html.is-touch .search-actions .btn {
+  min-height: 44px;
+  padding: 0 var(--sp-2);
+}
+
+/* Eleven rail items at 44 points are taller than a phone on its side, and the
+   rail clips rather than scrolls — which would leave the last few panels with
+   no way to reach them at all. The scrollbar is hidden to match the docks. */
+html.is-touch .rail {
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+html.is-touch .rail::-webkit-scrollbar {
+  display: none;
+}
+
+/* Hand-sized keycaps. The pad is the one control here that is held rather than
+   pressed, so it gets a little more than the minimum in the axis it is held
+   in, and the tightest gaps that still read as separate keys. */
+html.is-touch .flight-key {
+  width: 44px;
+  height: 46px;
+}
+
+html.is-touch .flight-pad {
+  gap: var(--sp-2);
+}
+
+html.is-touch .flight-row {
+  gap: var(--sp-4);
+}
+
+html.is-touch .flight-boost {
+  min-height: 44px;
+  padding: var(--sp-1) var(--sp-4);
+}
+
+html.is-touch .flight-speed-range {
+  /* A four-point track is a mouse target. */
+  height: 28px;
+}
+
+/*
+ * Put back the line the 900-point rule above drops. That rule trades the hint
+ * for room on the assumption that hovering a key gives the same answer in more
+ * detail, and on a touch screen there is no hover: dropping it leaves a pad of
+ * six unexplained letters as the only way to fly without a keyboard. It is the
+ * cheapest twelve points on the screen, and it is bought back at every touch
+ * width rather than only on a phone held upright — a phone on its side is 844
+ * points wide and would otherwise fall through the gap.
+ */
+html.is-touch .flight-hint {
+  display: block;
+  max-width: 100%;
+}
+
+/*
+ * A phone on its side is 390 points tall, and the pad is the tallest thing at
+ * the bottom of it. Tightened here so its top edge stays out of the middle of
+ * the frame: the padding and the gaps between the keys give up a few points
+ * each, and the keys themselves — the part being aimed at — do not.
+ */
+@media (max-height: 480px) {
+  html.is-touch .flight {
+    padding: var(--sp-2) var(--sp-3);
+    gap: var(--sp-1);
+  }
+
+  html.is-touch .flight-pad {
+    gap: 2px;
+  }
+
+  html.is-touch .flight-key {
+    height: 44px;
+  }
+}
+
+/*
+ * A touch rail is fourteen points wider than a pointer one, and on a portrait
+ * iPad that is fourteen points further into the middle of the view — where an
+ * open panel beside it was already a little too close. Taken back off the panel,
+ * which at 258 points has it to give. Above 1180 there is room for both; below
+ * 481 the phone tier has its own answer, which is why this sits between them.
+ */
+@media (min-width: 481px) and (max-width: 1180px) {
+  html.is-touch .panel-dock {
+    width: calc(200px * var(--ui-scale));
+  }
+}
+
 /* ------------------------------------------------------------- responsive */
 
 /*
@@ -1797,12 +2017,23 @@ body.immersive .immersive-hint {
  * the monitor gets wider — at 3440 it walks the panels into the middle of the
  * view, which is the one thing the layout exists to prevent.
  */
+/*
+ * A phone on its side is 2.16:1, so this query catches one — and the inset it
+ * computes there is negative, falling back to the plain edge and quietly
+ * throwing away the safe area the regions had. Hence the max() against the
+ * per-side edge on each: on a monitor the inset is the larger of the two and
+ * these are exactly the rules that were here before, and in landscape on a
+ * phone the notch still gets its 44 points.
+ */
 @media (min-aspect-ratio: 2/1) {
   :root { --inset: max(var(--edge), min(calc((100vw - 2100px) / 2), calc(22vw - 320px))); }
-  .region-left { padding-left: var(--inset); }
-  .region-right { padding-right: var(--inset); }
+  .region-left { padding-left: max(var(--edge-left), var(--inset)); }
+  .region-right { padding-right: max(var(--edge-right), var(--inset)); }
   .region-top,
-  .region-bottom { padding-left: var(--inset); padding-right: var(--inset); }
+  .region-bottom {
+    padding-left: max(var(--edge-left), var(--inset));
+    padding-right: max(var(--edge-right), var(--inset));
+  }
 }
 
 /* Short windows: the right-hand stack gets less room, so cap each panel harder
@@ -1845,4 +2076,181 @@ body.immersive .immersive-hint {
   .rail { width: var(--rail-w) !important; }
   .rail .rail-label { display: none; }
   .region-bottom { justify-content: center; }
+}
+
+/* ------------------------------------------------------------------ phone
+
+   The tiers above narrow a window; this one is a different shape of screen.
+
+   An iPhone is 390 to 440 CSS pixels across and about 850 tall, which is under
+   two thirds of the narrowest tier the layout had and half again as tall as it
+   is wide. Nothing above it copes, because everything above it assumes the top
+   bar's five groups fit on one row and that a hand-sized control can be 24
+   pixels across. Both stop being true here, so this tier is about stacking
+   rather than shrinking, and about growing the things you press.
+
+   Sizing is not this tier's job — that is the touch block above, which applies
+   at every screen size. What is here is only where things go.
+
+   The rule the layout exists to enforce still holds: the middle of the screen
+   belongs to the view. Everything below is pinned to the top edge or the bottom
+   edge, and the two are kept far enough apart that the scene has the band
+   between them to itself. */
+@media (max-width: 480px) {
+  /*
+   * The top bar's groups — a rail toggle, a wordmark, search, a mode toggle in
+   * the planetarium, and a clock carrying a full date — fit across one row at
+   * desktop widths with room to spare. Here they do not fit at all, so they
+   * stack, and the wordmark goes: it names an app you are already inside, and
+   * it is the only thing in the bar that does not do anything.
+   */
+  .topbar {
+    flex-wrap: wrap;
+    row-gap: var(--sp-2);
+  }
+
+  .brand,
+  .topbar-spacer {
+    display: none;
+  }
+
+  /* Search shares the first row with the rail toggle, because it is the fastest
+     route to anywhere and the rail is how everything else is reached. */
+  .search {
+    order: 1;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* Results are as wide as the field rather than the 420px they want, which is
+     wider than the screen. */
+  .search-results {
+    width: auto;
+    left: 0;
+    right: 0;
+    max-width: none;
+  }
+
+  .topbar > .segmented {
+    order: 2;
+  }
+
+  /*
+   * The clock takes a row of the bar to itself, and then splits into two of its
+   * own: the transport above, the timestamp below.
+   *
+   * Its eight controls plus a nineteen-character date come to well over five
+   * hundred points and there is no arrangement of them that fits across 366, so
+   * it was always going to wrap — the only question is where. Left to itself it
+   * breaks after the date and leaves "now" and a multiplier button stranded on a
+   * second line looking like an accident. Breaking before the date instead gives
+   * two rows that each mean something, which is what a clock on a phone looks
+   * like anyway.
+   */
+  .topbar > .timebar {
+    order: 3;
+    flex: 1 1 100%;
+    justify-content: center;
+    flex-wrap: wrap;
+    row-gap: var(--sp-1);
+  }
+
+  .topbar > .timebar .time-date {
+    flex: 1 1 100%;
+    font-size: var(--fs-micro);
+    text-align: center;
+  }
+
+  /* It separated the rate from the date, which are no longer beside each other. */
+  .topbar > .timebar .rule {
+    display: none;
+  }
+
+  .region-top {
+    padding-bottom: var(--sp-2);
+  }
+
+  /*
+   * A docked panel cannot avoid covering the view on a screen this narrow:
+   * the panel is 216 points wide, the rail is another 44, and the screen is
+   * 390. So the choice is only where it covers, and the answer is low and to
+   * the left — anchored to the bottom of its region and capped in height, which
+   * leaves the upper half of the scene and the right-hand side of it visible
+   * while a panel is open, and the whole of it visible when none is. The width
+   * cap is the more important half of this rule: without it the panel runs off
+   * the side of the screen and its right-hand column of numbers is unreachable.
+   */
+  .region-left {
+    align-items: flex-end;
+    padding-bottom: var(--sp-2);
+  }
+
+  .region-left > .dock {
+    max-height: 46vh;
+  }
+
+  .panel-dock {
+    width: min(
+      calc(216px * var(--ui-scale)),
+      calc(100vw - var(--rail-w) - var(--edge-left) - var(--edge-right) - var(--sp-3))
+    );
+  }
+
+  /*
+   * The bottom bar stacks, in a fixed order, and the flight pad is last so it
+   * is the lowest thing on the screen. That is not a tidiness preference: the
+   * pad is the only way to fly without a keyboard, it is held with a thumb, and
+   * a thumb reaches the bottom of a phone far more comfortably than the middle
+   * of it. The readouts it changes stay directly above it, and the two corner
+   * buttons keep their row so the pad gets a full-width one to itself.
+   */
+  .region-bottom {
+    justify-content: center;
+    row-gap: var(--sp-2);
+    padding-top: var(--sp-2);
+  }
+
+  .region-bottom .hud {
+    order: 1;
+    flex: 1 1 auto;
+  }
+
+  .region-bottom .bottom-right {
+    order: 2;
+    flex: none;
+  }
+
+  .region-bottom .flight {
+    order: 3;
+    flex: 1 1 100%;
+  }
+
+  /* The pad and its throttle spread across the row rather than sitting in the
+     middle of it, since the row is now the width of the screen. */
+  .flight-row {
+    width: 100%;
+    justify-content: space-around;
+  }
+
+  .flight-speed-range {
+    width: calc(72px * var(--ui-scale));
+  }
+
+  /* The first-run card is the full width of the screen less its margins here,
+     and its actions stack rather than being squeezed onto one line. */
+  .intro-card {
+    width: calc(100vw - var(--edge-left) - var(--edge-right));
+    padding: var(--sp-4);
+  }
+
+  /* Two columns of help text in 366 points is two columns of one word. */
+  .help-grid {
+    grid-template-columns: 1fr;
+    gap: var(--sp-4);
+  }
+
+  .intro-actions .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
 }

@@ -9,6 +9,7 @@
 
 import { el, text } from './dom.js';
 import { panel, segmented, slider } from './components.js';
+import { platform } from '../engine/platform.js';
 
 const PRESETS = [
   { value: 'auto', label: 'Auto', title: 'Measure the frames this machine produces and spend what it can afford' },
@@ -37,7 +38,7 @@ export function createQualityPanel({ prefs, hooks }) {
 
   const targetControl = segmented({
     options: TARGETS,
-    value: prefs.get('quality.targetFps', 60),
+    value: prefs.get('quality.targetFps', platform.targetFps),
     onChange: (value) => {
       prefs.set('quality.targetFps', value);
       hooks.setTargetFps?.(value);
@@ -49,7 +50,7 @@ export function createQualityPanel({ prefs, hooks }) {
     min: 0.5,
     max: 1,
     step: 0.05,
-    value: prefs.get('quality.maxRenderScale', 1),
+    value: prefs.get('quality.maxRenderScale', platform.maxRenderScale),
     format: (v) => `${Math.round(v * 100)}%`,
     title: 'The most the scene may be drawn at, as a fraction of your display. '
       + 'The largest single cost in the renderer — half the resolution is close '

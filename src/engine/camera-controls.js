@@ -1,6 +1,42 @@
 import { Quaternion, Vector2, Vector3 } from 'three';
+import { platform } from './platform.js';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+/**
+ * Touch gesture thresholds.
+ *
+ * Everything here exists because a finger cannot do what a mouse does. A mouse
+ * has three buttons and a wheel and sits exactly where it is put; a finger has
+ * one button, no wheel, and drifts a few pixels while it is being held still.
+ * So the interactions desktop reaches through a right button, a held shift and
+ * a scroll wheel have to be recovered from timing and travel instead, and the
+ * numbers below are where those two are cut.
+ *
+ * Half a second is the interval iOS itself uses for a press-and-hold, and eight
+ * pixels is about how far a thumb wanders while not moving. The tap window is
+ * shorter and its slop wider for the opposite reason: two deliberate taps come
+ * fast and land in slightly different places.
+ */
+const LONG_PRESS_MS = 500;
+const LONG_PRESS_SLOP = 8;
+const DOUBLE_TAP_MS = 300;
+const DOUBLE_TAP_SLOP = 32;
+/** A finger covers more ground than a mouse in the same "still" press. */
+const TAP_SLOP_TOUCH = 10;
+/**
+ * How far two fingers must travel before it is decided whether they are pinching
+ * or panning. The cost is a few pixels of dead zone at the start of every
+ * two-finger gesture; the alternative is committing on the first sample, which
+ * is noise.
+ */
+const TWO_POINTER_DEADZONE = 10;
+/**
+ * One double tap of zoom, as a wheel impulse. Roughly halves the distance once
+ * the coast has run out — deep enough to be worth the gesture, shallow enough
+ * that two by accident is not a journey.
+ */
+const DOUBLE_TAP_ZOOM = -0.05;
 
 /**
  * Fold an angle back into (-pi, pi].
@@ -175,6 +211,45 @@ export class OrbitApproachControls {
     this._moved = 0;
     this._pointers = new Map();
     this._pinch = 0;
+    /**
+     * What a pair of fingers turned out to be doing: null until they have moved
+     * far enough to say, then fixed for the rest of the gesture.
+     *
+     * A pinch and a two-finger pan are the same two pointers moving at the same
+     * time and neither is a subset of the other, so the only thing separating
+     * them is which quantity is changing — the distance between the fingers, or
+     * the point between them. Both change a little in either gesture, because a
+     * hand is not a machine, so it has to be settled on whichever has changed
+     * *more* once there is enough travel to compare. Committing to that answer
+     * and not revisiting it matters as much as getting it right: a gesture that
+     * switches from turning the view to zooming it halfway through is worse than
+     * one that guessed.
+     * @type {'pinch'|'pan'|null}
+     */
+    this._twoMode = null;
+    /** Travel accumulated for that decision: fingers apart, and midpoint along. */
+    this._spread = 0;
+    this._slide = 0;
+    this._twoMid = new Vector2();
+    /**
+     * Which of the two fingers have reported a move since the pair was last
+     * measured. Pointer events are per pointer, so a two-finger gesture arrives
+     * as a stream of half-frames; see `_handleTwoPointer` for why measuring
+     * those halves as they come gets the gesture wrong.
+     * @type {Set<number>}
+     */
+    this._twoSeen = new Set();
+    /** Pending long press, and where the finger went down. */
+    this._pressTimer = 0;
+    this._pressAt = new Vector2();
+    /**
+     * Set once a press has already been answered — by a long press opening the
+     * object menu, or by being the second half of a double tap — so that the
+     * release does not read it as a plain tap and travel somewhere as well.
+     */
+    this._pressHandled = false;
+    this._lastTapAt = new Vector2();
+    this._lastTapTime = 0;
     this._offset = new Vector3();
     this._quat = new Quaternion();
     this._lastDrag = new Vector2();
@@ -195,6 +270,14 @@ export class OrbitApproachControls {
 
   _bind() {
     const dom = this.dom;
+    // Safari hands a pinch or a two-finger slide to the page before the canvas
+    // is ever told a pointer moved, so without this the gestures below simply
+    // never fire and the page appears to zoom instead. The explorer's
+    // stylesheet already says this about #view, but the guarantee belongs next
+    // to the code that depends on it rather than in a file this one does not
+    // load — which is why controls.js sets it here for the sky canvas, and is
+    // the one thing this file was missing.
+    dom.style.touchAction = 'none';
     dom.addEventListener('pointerdown', (event) => {
       if (event.button === 1) event.preventDefault();
       dom.setPointerCapture(event.pointerId);
@@ -202,8 +285,16 @@ export class OrbitApproachControls {
       this._dragging = event.button === 2 || event.shiftKey || event.button === 1 ? 'look' : 'orbit';
       this._button = event.button;
       this._moved = 0;
-      this._flight = null;
       this.cruise = 0;
+      // Pressing a mouse button is unambiguously taking hold of the view, so an
+      // approach in progress stops there and then. A finger going down is not:
+      // it might be a tap, a long press, or the first of two, and none of those
+      // mean stop. So on touch the flight is left running until the finger
+      // actually moves, which the move handler below sees. Without that, the
+      // second tap of a double tap would kill the approach the first tap had
+      // just started and leave the camera in the gap it was crossing.
+      if (!platform.touch) this._flight = null;
+      else this._touchDown(event);
     });
     dom.addEventListener('pointermove', (event) => {
       const previous = this._pointers.get(event.pointerId);
@@ -218,9 +309,20 @@ export class OrbitApproachControls {
       previous.x = event.clientX;
       previous.y = event.clientY;
       this._moved += Math.hypot(dx, dy);
+      // A press that travels is a drag, and a drag must not also open a menu
+      // under the finger when it is half a second old.
+      if (this._pressTimer && this._moved > LONG_PRESS_SLOP) this._cancelLongPress();
+      // The moment a finger moves it is a grab, so the approach the mouse path
+      // ends on pointerdown ends here instead. It has to end before the drag
+      // below touches yaw or pitch, which the flight would otherwise overwrite.
+      if (platform.touch && this._flight) this._flight = null;
 
       if (this._pointers.size === 2) {
-        this._handlePinch();
+        // Two pointers at once is a pinch and nothing else when there is a
+        // mouse, because there is only one of it. On a touch screen the same
+        // pair has to carry the look drag as well; see _handleTwoPointer.
+        if (platform.touch) this._handleTwoPointer(event.pointerId);
+        else this._handlePinch();
         return;
       }
       const scale = this.orbitSensitivity * clamp(Math.log10(Math.max(this.distanceRadii, 1.001)), 0.02, 2.4);
@@ -261,6 +363,7 @@ export class OrbitApproachControls {
     const release = (event) => {
       const point = this._pointers.get(event.pointerId);
       this._pointers.delete(event.pointerId);
+      this._cancelLongPress();
       if (this._pointers.size === 0) {
         if (this._dragging === 'orbit') {
           this.yawVelocity = this._lastDrag.x * 0.5;
@@ -269,15 +372,25 @@ export class OrbitApproachControls {
         // A right-click opens the context menu, but only when it did not turn
         // into a look-drag — right-drag is how you look around, and a menu
         // appearing at the end of every one of those would be unusable.
-        if (this._moved < 5 && point) {
+        const slop = platform.touch ? TAP_SLOP_TOUCH : 5;
+        if (this._moved < slop && point) {
           if (this._button === 2) this.onContextMenu?.(event.clientX, event.clientY);
-          else if (this._button === 0) this.onClick?.(event.clientX, event.clientY);
+          // On touch the same press can already have been spent on a long press
+          // or on being the second of two taps, in which case travelling as
+          // well would be a third thing the user did not ask for.
+          else if (this._button === 0 && !(platform.touch && this._touchTapHandled(event))) {
+            this.onClick?.(event.clientX, event.clientY);
+          }
         }
         this._dragging = null;
         this._button = -1;
         this._lastDrag.set(0, 0);
       }
       this._pinch = 0;
+      this._twoMode = null;
+      this._spread = 0;
+      this._slide = 0;
+      this._twoSeen.clear();
     };
     dom.addEventListener('pointerup', release);
     dom.addEventListener('pointercancel', release);
@@ -429,6 +542,201 @@ export class OrbitApproachControls {
       this.zoomBy(amount);
     }
     this._pinch = distance;
+  }
+
+  /**
+   * Touch-only bookkeeping for a press going down.
+   *
+   * Arms the long press on the first finger, and treats a second one as the end
+   * of whatever the first was doing.
+   */
+  _touchDown(event) {
+    if (this._pointers.size > 1) {
+      // A second finger means the single-finger gesture is over. The long press
+      // has to go — a two-finger pinch that also opened a context menu half a
+      // second in would be unusable — and so does the drag the first finger had
+      // accumulated, or lifting off at the end of the pinch would release it as
+      // a spin.
+      this._cancelLongPress();
+      this._lastDrag.set(0, 0);
+      this._twoMode = null;
+      this._spread = 0;
+      this._slide = 0;
+      this._pinch = 0;
+      this._twoSeen.clear();
+      return;
+    }
+    this._pressHandled = false;
+    this._pressAt.set(event.clientX, event.clientY);
+    // A touch has no second button and no modifier keys, so the right-click
+    // that opens the object menu is otherwise unreachable — and with it every
+    // action in that menu that has no other home. A press held in place is the
+    // platform's own stand-in for a right-click, and it is the only one there
+    // is. The coordinates are the ones the finger went down at rather than
+    // wherever it has drifted to since, so the menu opens on what was pressed.
+    this._pressTimer = setTimeout(() => {
+      this._pressTimer = 0;
+      this._pressHandled = true;
+      this.onContextMenu?.(this._pressAt.x, this._pressAt.y);
+    }, LONG_PRESS_MS);
+  }
+
+  _cancelLongPress() {
+    if (!this._pressTimer) return;
+    clearTimeout(this._pressTimer);
+    this._pressTimer = 0;
+  }
+
+  /**
+   * Two fingers on a touch screen, where one pair of pointers has to serve both
+   * zooming and looking around.
+   *
+   * Desktop reaches the look drag through a right button, a middle button or a
+   * held shift, and a touch screen has none of the three — so the orbit drag is
+   * all a single finger can express, and looking around has nowhere to go. Two
+   * fingers sliding together is the gesture every map and photo viewer already
+   * uses for a pan, which makes it the one place to put it; telling that apart
+   * from the pinch it shares its pointers with is described on `_twoMode`.
+   */
+  _handleTwoPointer(pointerId) {
+    const points = [...this._pointers.values()];
+    const distance = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
+    const midX = (points[0].x + points[1].x) / 2;
+    const midY = (points[0].y + points[1].y) / 2;
+    if (this._pinch <= 0) {
+      this._pinch = distance;
+      this._twoMid.set(midX, midY);
+      this._twoSeen.clear();
+      return;
+    }
+    // Each finger reports its own move, so a pair sliding across the glass
+    // arrives here one half-frame at a time: first finger moved, second still
+    // where it was. Measured at that instant every slide looks like the gap
+    // between the fingers closing, and then — on the other finger's event —
+    // opening again by the same amount. That is a pinch wobbling in place, and
+    // it beat the pan on travel every time, so a two-finger slide zoomed
+    // instead of turning the view. Waiting for both fingers to report before
+    // measuring puts the halves back together.
+    //
+    // The other reading of two events from one finger is that the other is
+    // being held still, which is how a thumb-anchored pinch works. That would
+    // wait forever, so a finger reporting twice also completes the frame; the
+    // deltas are taken from the last measurement rather than the last event, so
+    // nothing is lost by the wait either way.
+    if (this._twoSeen.has(pointerId)) {
+      this._twoSeen.clear();
+    } else {
+      this._twoSeen.add(pointerId);
+      if (this._twoSeen.size < 2) return;
+      this._twoSeen.clear();
+    }
+    const dDistance = distance - this._pinch;
+    const dMidX = midX - this._twoMid.x;
+    const dMidY = midY - this._twoMid.y;
+    this._pinch = distance;
+    this._twoMid.set(midX, midY);
+
+    if (this._twoMode === null) {
+      this._spread += Math.abs(dDistance);
+      this._slide += Math.hypot(dMidX, dMidY);
+      if (Math.max(this._spread, this._slide) < TWO_POINTER_DEADZONE) return;
+      this._twoMode = this._spread > this._slide ? 'pinch' : 'pan';
+    }
+
+    if (this._twoMode === 'pinch') {
+      if (distance > 0) {
+        const amount = Math.log((distance - dDistance) / distance) * 1.4;
+        this.zoomVelocity += amount * 0.4;
+        this.zoomBy(amount);
+      }
+      return;
+    }
+
+    // Steered by the point between the fingers rather than by either of them, so
+    // that rolling the pair slightly — which two fingers on one hand do
+    // constantly — does not turn the view.
+    const lookScale = this.lookSensitivity;
+    if (this.mode === 'roam') {
+      // Roaming has no look offset to move: yaw and pitch are the view
+      // direction itself, which is why a right-drag already does the same thing
+      // as a left one there. Two fingers match that rather than inventing a
+      // second way to turn.
+      this.yaw = wrapAngle(this.yaw - dMidX * lookScale);
+      this.pitch = clamp(this.pitch + dMidY * lookScale, -1.5533, 1.5533);
+      this._lastDrag.set(0, 0);
+    } else {
+      this.lookYaw = clamp(this.lookYaw - dMidX * lookScale, -2.8, 2.8);
+      this.lookPitch = clamp(this.lookPitch + dMidY * lookScale, -1.5, 1.5);
+    }
+    // Read by two other places: the release path, which must not turn a look
+    // into an orbit flick, and the auto-centre in `update`, which would
+    // otherwise pull the offsets back to centre while fingers are still moving
+    // them.
+    this._dragging = 'look';
+  }
+
+  /**
+   * Decide what a lifted finger meant, for the two interactions a touch screen
+   * would otherwise have no way to reach.
+   *
+   * @returns {boolean} true when the press has been dealt with here and must not
+   *   also be read as a single tap
+   */
+  _touchTapHandled(event) {
+    if (this._pressHandled) {
+      // The long press already answered this press with a menu. Forgetting the
+      // previous tap too stops "tap, then hold" from being read as a double tap
+      // when the second finger comes up.
+      this._lastTapTime = 0;
+      return true;
+    }
+    const now = performance.now();
+    const near = Math.hypot(event.clientX - this._lastTapAt.x, event.clientY - this._lastTapAt.y);
+    if (now - this._lastTapTime < DOUBLE_TAP_MS && near < DOUBLE_TAP_SLOP) {
+      this._lastTapTime = 0;
+      this._closeIn();
+      return true;
+    }
+    this._lastTapTime = now;
+    this._lastTapAt.set(event.clientX, event.clientY);
+    return false;
+  }
+
+  /**
+   * What a double tap does, and why it is not a second select-and-travel.
+   *
+   * A single tap here already picks whatever is under the finger and flies to
+   * it, so the second tap of a double cannot sensibly mean "go there" — it has
+   * been going there since the first one landed. What a touch screen has no way
+   * to reach is the wheel, and the wheel means exactly one thing in this app:
+   * close in. So that is what a double tap is, and it arrives two ways
+   * depending on whether an approach is already running.
+   *
+   * Standing still, it is one wheel impulse, put through the same velocity the
+   * wheel and the pinch use rather than setting the distance directly. That is
+   * what makes it coast to a stop like every other zoom in the app, and what
+   * makes it mean the right thing in the modes where closing in is not a
+   * distance at all — a narrower field while stood on a surface, a higher speed
+   * while roaming.
+   *
+   * Mid-approach it deepens the arrival instead. Cutting the flight short and
+   * halving the distance from wherever the camera had got to is the obvious
+   * reading and the wrong one: a double tap on a planet would abandon you in
+   * the gap you were crossing. Editing where the flight is going keeps the one
+   * movement, and makes the gesture mean the same thing either way — closer
+   * than a single tap alone would have taken you.
+   */
+  _closeIn() {
+    const flight = this._flight;
+    if (flight) {
+      // Not below a shade above the surface: the flight drives the distance
+      // without clamping it, so a target inside the body would be flown into.
+      flight.toDistance = Math.max(flight.toDistance * 0.5, 1.05);
+      return;
+    }
+    this.cruise = 0;
+    this.zoomVelocity += DOUBLE_TAP_ZOOM;
+    this.zoomBy(DOUBLE_TAP_ZOOM * 0.35);
   }
 
   /**

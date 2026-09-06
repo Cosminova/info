@@ -37,6 +37,12 @@ const GROUPS = {
   hero: { dir: 'site/assets/hero', w: 1600, h: 900, quality: 78 },
   feature: { dir: 'site/assets/feature', w: 1400, h: 933, quality: 84 },
   gallery: { dir: 'site/assets/shots', w: 1000, h: 1250, quality: 88 },
+  // The app's own start screen, so these go into public/ and ship inside the
+  // build rather than beside it — the app is served on its own at /app and
+  // cannot reach the site's assets. Same size and rationale as the hero: a
+  // background behind a scrim and a title, on the critical path, where the
+  // difference between this and 1920 is invisible and the weight is not.
+  home: { dir: 'public/home', w: 1600, h: 900, quality: 78 },
 };
 
 /**
@@ -84,6 +90,25 @@ const SHOTS = [
   // scrim then crushes what little there was. Earth at a low sun fills the
   // frame with graded sky instead. Mars keeps its slot in the gallery.
   { group: 'hero', name: 'earth-ground', stand: { body: 'earth', sunElevationDeg: 0.6, altitudeKm: 2.5, viewElevationDeg: 7 }, detail: 'earth', fov: 58 },
+
+  /* ---------------------------------------------------------------- home */
+
+  /*
+   * The app's start screen, and three of them for the same reason the site's
+   * hero is a slideshow rather than a still: a lensed black hole, a ringed
+   * giant, and a world's own dusk seen from the ground on it. One picture can
+   * only make one of those claims. The difference is that a start screen is
+   * over in a second or two, so it shows one per visit and fetches only that
+   * one, rather than cycling and paying for all three.
+   *
+   * These are the hero's camera states deliberately, not new ones. Each was
+   * already framed to sit behind large type with a scrim over it, which is
+   * exactly what is being asked of them here, and the notes on why each
+   * distance and phase angle is what it is are above.
+   */
+  { group: 'home', name: 'm87', hole: { key: 'm87-star', distanceRadii: 30 }, fov: 38 },
+  { group: 'home', name: 'saturn', sun: { key: 'saturn', distanceRadii: 4.2, phaseDeg: 45, tiltDeg: 26 }, detail: 'saturn', fov: 40 },
+  { group: 'home', name: 'earth-ground', stand: { body: 'earth', sunElevationDeg: 0.6, altitudeKm: 2.5, viewElevationDeg: 7 }, detail: 'earth', fov: 58 },
 
   /* ------------------------------------------------------------- feature */
 

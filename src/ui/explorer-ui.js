@@ -29,31 +29,99 @@ import { createFlightControls } from './flight-controls.js';
 import { createIntro } from './intro.js';
 import { VIEW_GROUPS } from './view-options.js';
 import { AU_KM, formatDistance } from '../engine/units.js';
+import { platform } from '../engine/platform.js';
+
+/**
+ * A touch device gets its own wording throughout this file rather than wording
+ * that covers both.
+ *
+ * The rule is narrow: never name an input the device does not have. A phone has
+ * no wheel to scroll, no second mouse button, and no F11 — and text that offers
+ * them is worse than text that says nothing, because it reads as a feature that
+ * is broken rather than as one that is somewhere else. Everything the
+ * interface says about *what* a control does is unchanged; only the sentences
+ * naming the finger or the key that reaches it differ.
+ */
+const TOUCH = platform.touch;
 
 const CAMERA_MODES = [
   {
     value: 'orbit',
     label: 'Orbit',
-    title: 'Circle the selected body. Drag to swing around it, scroll to close in.',
+    title: TOUCH
+      ? 'Circle the selected body. Drag to swing around it, pinch to close in.'
+      : 'Circle the selected body. Drag to swing around it, scroll to close in.',
   },
   {
     value: 'free',
     label: 'Fly',
-    title: 'Thrust with WASD and Q/E, still measured from the selected body.',
+    title: TOUCH
+      ? 'Thrust with the flight pad, still measured from the selected body.'
+      : 'Thrust with WASD and Q/E, still measured from the selected body.',
   },
   {
     value: 'track',
     label: 'Track',
-    title: 'Thrust with WASD, but the view stays locked on the selected body.',
+    title: TOUCH
+      ? 'Thrust with the flight pad, but the view stays locked on the selected body.'
+      : 'Thrust with WASD, but the view stays locked on the selected body.',
   },
   {
     value: 'roam',
     label: 'Roam',
-    title:
-      'Let go of the body entirely and fly through open space. '
-      + 'Drag turns you on the spot, the wheel sets your speed.',
+    title: TOUCH
+      ? 'Let go of the body entirely and fly through open space. '
+        + 'Drag turns you on the spot, pinch sets your speed.'
+      : 'Let go of the body entirely and fly through open space. '
+        + 'Drag turns you on the spot, the wheel sets your speed.',
   },
 ];
+
+/**
+ * Tell the stylesheet it is being touched.
+ *
+ * The 44-point minimum for anything you press is a property of the finger, not
+ * of the window: an iPad is 1024 points across and its buttons need to be just
+ * as big as a phone's, while a desktop window dragged down to 400 points is
+ * still being driven by a mouse and should keep the compact controls it was
+ * designed with. So the size rules hang off this class and the layout rules hang
+ * off a width, which are two different questions and were being answered by one.
+ *
+ * A class rather than `@media (pointer: coarse)` because that query also matches
+ * a touchscreen laptop, and this must not be able to change what a desktop is
+ * given. `platform` is the one thing that knows, and it asks the native shell
+ * before it guesses.
+ *
+ * The sky view reaches the same rules through controls.js, which is the only
+ * thing it loads that this port owns.
+ */
+function markAsTouchDriven() {
+  document.documentElement.classList.add('is-touch');
+}
+
+/**
+ * Ask iOS for the area under the notch and the home indicator.
+ *
+ * The safe-area insets the stylesheet compensates for are all zero unless the
+ * document has said `viewport-fit=cover`. Without it the browser insets the
+ * whole viewport for you: the scene stops at the notch, there are black bars
+ * where the hardware is, and `env(safe-area-inset-top)` correctly reports that
+ * nothing is overlapping anything. That is a defensible layout for a document
+ * and the wrong one for this, which is a single full-bleed view of a scene with
+ * an instrument panel floating over it — the scene should run under the notch
+ * and only the panel should avoid it.
+ *
+ * Done here rather than in the markup because it is a consequence of being on a
+ * touch device, which is a thing only the resolved platform knows, and because
+ * it must not change what a desktop browser is handed. Appended rather than
+ * rewritten so that whatever else the tag says survives, and skipped outright if
+ * the property is already there.
+ */
+function askForTheWholeScreen() {
+  const tag = document.querySelector('meta[name="viewport"]');
+  if (!tag || /viewport-fit/.test(tag.content)) return;
+  tag.content = `${tag.content}, viewport-fit=cover`;
+}
 
 export function createExplorerUI(config) {
   const {
@@ -63,6 +131,10 @@ export function createExplorerUI(config) {
 
   const prefs = createPrefs();
   prefs.applyAppearance();
+  if (TOUCH) {
+    markAsTouchDriven();
+    askForTheWholeScreen();
+  }
   const shortcuts = createShortcuts(prefs);
   createTooltips();
   const menu = createMenu();
@@ -120,10 +192,28 @@ export function createExplorerUI(config) {
    */
   const panels = new Map();
 
+  /**
+   * Panels start closed on a phone whatever the saved preference says.
+   *
+   * Two of them are open by default, which is right on a monitor: they take a
+   * margin the scene was not using and they are how someone finds out the app
+   * has panels at all. On a 390-point screen there is no margin — a 216-point
+   * panel beside a 56-point rail is two thirds of the width — so opening on one
+   * puts a wall of chrome over the thing the app exists to show, on the visit
+   * where that view has to do the persuading.
+   *
+   * Overriding the preference rather than changing the default, because the
+   * default is shared with the desktop and with the planetarium and is correct
+   * for both. This does mean a panel opened on a phone is not reopened on the
+   * next visit, which is the ordinary way a phone behaves: the rail is one tap
+   * away and the view is what you came back for.
+   */
+  const startClosed = platform.deviceClass === 'phone';
+
   function registerPanel(id, made, region) {
     panels.set(id, made);
     region.append(made.root);
-    show(made.root, prefs.get(`panels.${id}`, false));
+    show(made.root, !startClosed && prefs.get(`panels.${id}`, false));
     return made;
   }
 
@@ -410,7 +500,9 @@ export function createExplorerUI(config) {
   const bottomRight = el('div', { class: 'bottom-right' }, [
     el('button', {
       type: 'button', class: 'btn', text: 'Immersive',
-      title: 'Hide the entire interface',
+      title: TOUCH
+        ? 'Hide the entire interface \u2014 tap the line at the bottom to bring it back'
+        : 'Hide the entire interface',
       onClick: () => setImmersive(true),
     }),
     el('button', {
@@ -424,10 +516,26 @@ export function createExplorerUI(config) {
   const flight = createFlightControls({ controls, prefs });
   append(regionBottom, [hud.root, flight.root, bottomRight]);
 
+  /*
+   * Immersive mode fades the whole interface out, and on a desktop F11 brings it
+   * back. On a touch device that is a one-way door: there are no F keys, and
+   * everything that could have restored the interface has just been faded out
+   * and told to ignore the pointer.
+   *
+   * So on touch the hint stops being a note about the way out and becomes the
+   * way out. It is the only element in the mode that keeps its pointer events,
+   * it settles to a quarter opacity instead of vanishing — see the rule in
+   * theme.css — and it is sized as something to press rather than as a caption.
+   */
   const immersiveHint = el('div', {
-    class: 'immersive-hint',
-    text: 'immersive mode \u2014 press F11 to bring the interface back',
+    class: TOUCH ? 'immersive-hint is-touch' : 'immersive-hint',
+    text: TOUCH
+      ? 'immersive mode \u2014 tap here to bring the interface back'
+      : 'immersive mode \u2014 press F11 to bring the interface back',
   });
+  if (TOUCH) {
+    immersiveHint.addEventListener('click', () => setImmersive(false));
+  }
   document.body.append(immersiveHint);
 
   const intro = createIntro({
@@ -540,27 +648,45 @@ export function createExplorerUI(config) {
             + 'Or type a name into the search box at the top \u2014 any of five thousand stars, '
             + 'the named moons, a few thousand galaxies, or a planet around another sun. '
             + 'Everything in the scene is somewhere you can actually go.' }),
-          el('p', { class: 'prose', html:
-            'Once you are there: <b>drag</b> to swing around it, <b>scroll</b> to close in or pull back, '
-            + 'and <b>Land</b> in the Object panel to drop to the surface and stand on it.' }),
+          el('p', { class: 'prose', html: TOUCH
+            ? 'Once you are there: <b>drag</b> to swing around it, <b>pinch</b> to close in or pull back, '
+              + 'and <b>Land</b> in the Object panel to drop to the surface and stand on it.'
+            : 'Once you are there: <b>drag</b> to swing around it, <b>scroll</b> to close in or pull back, '
+              + 'and <b>Land</b> in the Object panel to drop to the surface and stand on it.' }),
 
           el('div', { class: 'section-title', text: 'The four camera modes' }),
           el('p', { class: 'prose', html:
             '<b>Orbit</b> circles whatever is selected \u2014 the mode you arrive in. '
-            + '<b>Fly</b> adds thrust on <b>W A S D</b>, still measured from that body. '
+            + (TOUCH
+              ? '<b>Fly</b> adds thrust on the <b>flight pad</b> that appears below, still measured from that body. '
+              : '<b>Fly</b> adds thrust on <b>W A S D</b>, still measured from that body. ')
             + '<b>Track</b> is the same but keeps the body centred while you move. '
             + '<b>Roam</b> lets go of it completely: no target, no orbit, just open space. '
-            + 'Drag turns you on the spot, the wheel sets your speed, and how fast you go '
+            + (TOUCH
+              ? 'Drag turns you on the spot, pinch sets your speed, and how fast you go '
+              : 'Drag turns you on the spot, the wheel sets your speed, and how fast you go ')
             + 'scales with whatever happens to be nearest \u2014 so you slow to a crawl on '
             + 'the way in to something and cross the system when nothing is close.' }),
 
-          el('div', { class: 'section-title', text: 'Pointer and keys' }),
-          el('p', { class: 'prose', html:
-            '<b>Drag</b> orbits the target. <b>Right-drag</b> or <b>shift-drag</b> looks around. '
-            + '<b>Scroll</b> zooms exponentially and keeps coasting, from metres above a crater out past the Local Group. '
-            + '<b>Click</b> selects and travels; <b>right-click</b> opens the object menu. '
-            + '<b>W A S D</b> with <b>Q</b>/<b>E</b> flies and <b>shift</b> boosts. '
-            + 'Hover any control to be told what it does.' }),
+          /*
+           * The gesture list, in the words of whatever is holding the app. The
+           * touch version is not a translation of the pointer one: two of the
+           * five gestures below have no counterpart on a mouse at all, and two
+           * of the mouse's — the right button and the wheel — have no finger.
+           * A list that named both would be twice as long and half of it would
+           * be unusable on the device reading it.
+           */
+          el('div', { class: 'section-title', text: TOUCH ? 'Touch' : 'Pointer and keys' }),
+          el('p', { class: 'prose', html: TOUCH
+            ? '<b>Drag</b> orbits the target. <b>Two fingers</b> dragged together look around instead. '
+              + '<b>Pinch</b> zooms exponentially and keeps coasting, from metres above a crater out past the Local Group. '
+              + '<b>Tap</b> selects and travels, <b>double tap</b> closes in further, and <b>press and hold</b> opens the object menu. '
+              + 'The <b>flight pad</b> at the bottom of the screen thrusts, climbs and dives, and <b>Boost</b> beside it goes four times faster.'
+            : '<b>Drag</b> orbits the target. <b>Right-drag</b> or <b>shift-drag</b> looks around. '
+              + '<b>Scroll</b> zooms exponentially and keeps coasting, from metres above a crater out past the Local Group. '
+              + '<b>Click</b> selects and travels; <b>right-click</b> opens the object menu. '
+              + '<b>W A S D</b> with <b>Q</b>/<b>E</b> flies and <b>shift</b> boosts. '
+              + 'Hover any control to be told what it does.' }),
           el('div', { class: 'section-title', text: 'What you are looking at' }),
           el('p', { class: 'prose', text:
             'One continuous scene at true scale. Surfaces are spacecraft imagery where it exists \u2014 LROC and LOLA for '
@@ -573,7 +699,19 @@ export function createExplorerUI(config) {
             + 'panorama: ESO/S. Brunier.' }),
         ]),
         el('div', {}, [
-          el('div', { class: 'section-title', text: 'Keyboard \u2014 click a key to rebind' }),
+          /*
+           * Kept on touch rather than dropped, and retitled instead. An iPad
+           * with a keyboard attached is a common way to use this, and so is an
+           * iPhone with one; what would be wrong is presenting the table as
+           * the way in when for most touch users there is nothing to press.
+           */
+          el('div', { class: 'section-title', text: TOUCH
+            ? 'With a keyboard attached \u2014 tap a key to rebind'
+            : 'Keyboard \u2014 click a key to rebind' }),
+          TOUCH && el('p', { class: 'prose', html:
+            'Nothing in this table is the only way in \u2014 every panel and dialog also has an '
+            + 'icon on the <b>rail</b> down the left edge. Rows reading <b>unset</b> are ones '
+            + 'that have no key on this device; tap one to give it whichever you prefer.' }),
           helpKeys,
           el('div', { class: 'section' }, [
             el('button', {
@@ -888,6 +1026,21 @@ export function createExplorerUI(config) {
       void document.body.offsetWidth;
     }
     css(document.body, 'immersive', on);
+    /*
+     * A script that hid the interface in order to photograph the scene does not
+     * need to be told how to get the interface back — and it got photographed
+     * instead. The hint lingers five seconds after the interface goes, which is
+     * longer than the first still takes to settle, so the committed hero frame
+     * on the site had "press F11 to bring the interface back" written across the
+     * bottom of it.
+     *
+     * It needs saying here rather than in the stylesheet because the no-ui-anim
+     * rule above cannot reach it: that zeroes transition durations, and this is
+     * a keyframe animation, which has to be called off by name. `instant` is
+     * only ever true for the programmatic route, so this is exactly the set of
+     * callers that should never see it.
+     */
+    css(immersiveHint, 'is-silent', instant);
     if (instant) {
       void document.body.offsetWidth;
       css(document.body, 'no-ui-anim', false);
@@ -1259,8 +1412,8 @@ export function createExplorerUI(config) {
         hooks.setView?.(option.key, prefs.get(`view.${option.key}`, option.default));
       }
     }
-    hooks.setMaxRenderScale?.(prefs.get('quality.maxRenderScale', 1));
-    hooks.setTargetFps?.(prefs.get('quality.targetFps', 60));
+    hooks.setMaxRenderScale?.(prefs.get('quality.maxRenderScale', platform.maxRenderScale));
+    hooks.setTargetFps?.(prefs.get('quality.targetFps', platform.targetFps));
     hooks.setQualityPreset?.(prefs.get('quality.preset', 'auto'));
   }
 

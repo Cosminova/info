@@ -16,6 +16,12 @@
   display: block;
   touch-action: none;
   cursor: crosshair;
+  /* The long press that stands in for a right-click here is the same gesture
+     iOS uses to offer a selection or a share sheet, and it wins: the callout
+     appears over the object menu and the press that opened it is swallowed. */
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 #view:active {
@@ -52,7 +58,7 @@
 .scalebar {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--edge) + 44px * var(--ui-scale));
+  bottom: calc(var(--edge-bottom) + 44px * var(--ui-scale));
   transform: translateX(-50%);
   z-index: 11;
   display: grid;
@@ -97,7 +103,27 @@
  * legend — it reads the same anywhere along the bottom.
  */
 body.is-flying .scalebar {
-  bottom: calc(var(--edge) + 122px * var(--ui-scale));
+  bottom: calc(var(--edge-bottom) + 122px * var(--ui-scale));
+}
+
+/* The touch pad's keycaps are 46 points tall instead of 26, so the pad it is
+   being lifted over is about fifteen points taller than the number above
+   assumes — enough that the legend lands on its top border. */
+html.is-touch body.is-flying .scalebar {
+  bottom: calc(var(--edge-bottom) + 140px * var(--ui-scale));
+}
+
+/*
+ * A phone turned sideways is under 400 points tall, and lifting the legend the
+ * height of the pad puts it beside the reticle — the middle of the view, which
+ * is the one place the layout keeps clear. The portrait phone tier already
+ * drops the bar while the pad is up for the same reason; this is that rule
+ * again for the landscape shape, where the width tier does not reach.
+ */
+@media (max-height: 480px) {
+  html.is-touch body.is-flying .scalebar {
+    display: none;
+  }
 }
 
 .scalebar {
@@ -307,6 +333,31 @@ body.is-flying .scalebar {
   opacity: 0.6;
 }
 
+/* ----------------------------------------------------------------- touch
+
+   The panel internals, which are dense on purpose and cannot stay that dense
+   under a finger. The shared chrome is handled in ui/theme.css; these are the
+   explorer's own lists, and the reason they are here rather than left small is
+   that the destination chips are what the welcome card tells you to press
+   first. A row of 20-point chips is the wrong thing to hand someone who has
+   just been told to tap one.
+
+   They grow in height only. Widening them would reflow the wrapping row into
+   twice as many lines for no gain, and the panels scroll, so height is cheap
+   here in a way it is not in a bar. */
+
+html.is-touch .quick-list .btn.quick,
+html.is-touch .catalog-grid .btn,
+html.is-touch .tree-root,
+html.is-touch .tree-kid,
+html.is-touch .bookmark-row .btn {
+  min-height: 40px;
+}
+
+html.is-touch .quick-list {
+  gap: var(--sp-2);
+}
+
 /* ------------------------------------------------------------- responsive */
 
 /* The shared rules — how the regions and docked panels give way — are in
@@ -324,4 +375,196 @@ body.is-flying .scalebar {
 
 @media (max-width: 820px) {
   .hud .readout[data-opt='3'] { display: none; }
+}
+
+/* Phone. The stacking is in ui/theme.css; what is left here is the bottom of
+   the explorer specifically, where the flight pad now takes a full-width row of
+   its own and the scale bar has to get out of its way. */
+@media (max-width: 480px) {
+  /* Target and distance are what is left after the drops above, and they are
+     the two that matter: what you are looking at and how far away it is. */
+  .hud {
+    padding: var(--sp-2) var(--sp-3);
+    gap: var(--sp-3);
+    justify-content: center;
+  }
+
+  .scalebar {
+    bottom: calc(var(--edge-bottom) + 52px * var(--ui-scale));
+  }
+
+  /*
+   * With the pad on its own row the bottom bar is around 160 points tall, and
+   * lifting the scale bar clear of that would push a legend into the middle of
+   * the view — which is the one thing the layout will not do. So while the pad
+   * is up the bar goes instead: it is a caption saying how wide the frame is,
+   * and the control that flies you somewhere is worth more than knowing that.
+   */
+  body.is-flying .scalebar {
+    display: none;
+  }
+}
+
+/* -------------------------------------------------------------------- home
+
+   The start screen, over the loading cover. See index.html for why it is in the
+   markup, and ui/home.js for what turns it into a door.
+
+   Type here is sized against the viewport rather than off --ui-scale, which
+   everything else in this file uses. That variable is the user's preference for
+   how large the instrument panel should be, and this is not the instrument
+   panel: it is a title over a photograph, and it should be the same size on a
+   given screen whether or not somebody has since decided they want small
+   readouts. */
+
+#home {
+  position: fixed;
+  inset: 0;
+  /* Over the loading cover, which is 100 and stays underneath doing its job. */
+  z-index: 200;
+  display: grid;
+  place-items: center;
+  /* The same gradient as the loading cover, so that the moment before the
+     backdrop has decoded looks deliberate rather than empty — and so that a
+     shell removing this screen removes something indistinguishable from what
+     is behind it. */
+  background: radial-gradient(circle at 50% 45%, #0a1020 0%, var(--void) 72%);
+  transition: opacity 520ms var(--ease);
+}
+
+/* Only once there is something to start. Before that the whole cover is inert
+   and the button says what it is waiting for. */
+#home.is-ready {
+  cursor: pointer;
+}
+
+#home.is-going {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.home-backdrop {
+  position: absolute;
+  inset: 0;
+  background-position: center;
+  background-size: cover;
+  /* Faded in from nothing when the image reports itself decoded, so the screen
+     never shows a half-painted photograph. */
+  opacity: 0;
+  transition: opacity 1400ms var(--ease);
+}
+
+.home-backdrop.is-loaded {
+  opacity: 1;
+  /* A minute per pass, which is slow enough that it reads as the frame being
+     alive rather than as something moving. */
+  animation: home-drift 60s ease-in-out infinite alternate;
+}
+
+@keyframes home-drift {
+  from { transform: scale(1.04); }
+  to { transform: scale(1.13) translate3d(-1.2%, -0.8%, 0); }
+}
+
+/* A vignette over the picture and under the type.
+
+   Two layers, because the three backdrops put their brightness in three
+   different places — a lensed disc off to one side, a lit globe in the middle,
+   a horizon band across it. The radial one guarantees the title has something
+   dark behind it whichever of those turned up; the linear one weights the top
+   and bottom so the title and the button both sit on their own ground. */
+#home::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(58% 48% at 50% 50%, rgba(4, 5, 10, 0.74) 0%, rgba(4, 5, 10, 0.34) 60%, rgba(4, 5, 10, 0) 100%),
+    linear-gradient(to bottom, rgba(4, 5, 10, 0.5) 0%, rgba(4, 5, 10, 0) 30%, rgba(4, 5, 10, 0) 58%, rgba(4, 5, 10, 0.66) 100%);
+}
+
+.home-inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  padding: var(--edge-top) var(--edge-right) var(--edge-bottom) var(--edge-left);
+  text-align: center;
+}
+
+.home-title {
+  margin: 0;
+  font-family: var(--mono);
+  font-weight: 400;
+  font-size: clamp(26px, 6.4vw, 58px);
+  letter-spacing: 0.5em;
+  /* Letter-spacing is applied after the last letter too, so a centred line sits
+     half a space to the left of where it looks like it should. */
+  text-indent: 0.5em;
+  color: var(--ink);
+  text-shadow: 0 2px 40px rgba(0, 0, 0, 0.7);
+}
+
+.home-tagline {
+  margin: var(--sp-4) 0 0;
+  font-size: clamp(10px, 1.5vw, 13px);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--ink-2);
+  text-shadow: 0 1px 20px rgba(0, 0, 0, 0.8);
+}
+
+/*
+ * Waiting, and then a way in. The same element does both so that nothing moves
+ * when the app becomes ready: the label is replaced and the border arrives.
+ */
+.home-start {
+  margin-top: clamp(28px, 6vh, 64px);
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  font-size: clamp(11px, 1.6vw, 14px);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--dim);
+  transition: color var(--t-slow) var(--ease), border-color var(--t-slow) var(--ease),
+    background-color var(--t-slow) var(--ease);
+}
+
+.home-start:disabled {
+  cursor: default;
+}
+
+.home-start.is-ready {
+  padding: clamp(12px, 1.6vh, 16px) clamp(26px, 4vw, 40px);
+  border-color: var(--line-2);
+  background: rgba(9, 13, 21, 0.5);
+  backdrop-filter: var(--blur);
+  -webkit-backdrop-filter: var(--blur);
+  color: var(--ink);
+  cursor: pointer;
+  animation: home-breathe 3.4s ease-in-out infinite;
+}
+
+.home-start.is-ready:hover,
+.home-start.is-ready:focus-visible {
+  border-color: var(--accent);
+  background: rgba(14, 21, 33, 0.66);
+  /* Stop drawing attention to itself once it plainly has it. */
+  animation: none;
+}
+
+@keyframes home-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 var(--accent-glow); }
+  50% { box-shadow: 0 0 26px 2px var(--accent-glow); }
+}
+
+/* The drift and the breath are decoration, and the theme's reduced-motion block
+   only zeroes transition durations — an animation has to be stopped by name. */
+@media (prefers-reduced-motion: reduce) {
+  .home-backdrop.is-loaded,
+  .home-start.is-ready {
+    animation: none;
+  }
 }

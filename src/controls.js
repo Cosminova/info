@@ -1,5 +1,6 @@
 import { Vector3 } from 'three';
 import { DEG, RAD } from './astro.js';
+import { platform } from './engine/platform.js';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const easeInOutCubic = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
@@ -61,6 +62,16 @@ export class SkyControls {
   _bind() {
     const dom = this.dom;
     dom.style.touchAction = 'none';
+    /*
+     * Marks the document for the touch-only rules in ui/theme.css, which grow
+     * everything you press to 44 points. The planetarium's interface is built
+     * in markup and wired by main.js, and this is the only file it loads that
+     * belongs to the touch port — so the flag is raised here, next to the other
+     * line in this method that exists because a finger is not a mouse. The
+     * explorer raises it in ui/explorer-ui.js, where it has a composition root
+     * to do it from.
+     */
+    if (platform.touch) document.documentElement.classList.add('is-touch');
 
     this._onPointerDown = (event) => {
       if (!this.enabled) return;

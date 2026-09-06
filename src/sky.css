@@ -20,6 +20,11 @@
   display: block;
   touch-action: none;
   cursor: crosshair;
+  /* Long-pressing a canvas on iOS offers to copy or share it, over the top of
+     whatever the press was for. */
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* ------------------------------------------------------------------- labels */
@@ -166,7 +171,10 @@
    across the view. */
 .zoombar {
   position: absolute;
-  right: 0;
+  /* The centre region has no padding of its own, so its right edge is the right
+     edge of the screen — which in landscape on a phone is under the notch on
+     one side and the rounded corner on the other. */
+  right: env(safe-area-inset-right, 0px);
   top: 50%;
   transform: translateY(-50%);
   display: flex;
@@ -199,7 +207,7 @@
   z-index: 60;
   display: grid;
   place-items: center;
-  padding: var(--edge);
+  padding: var(--edge-top) var(--edge-right) var(--edge-bottom) var(--edge-left);
   background: rgba(2, 4, 9, 0.62);
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
@@ -235,5 +243,41 @@ body.immersive #reticle {
      useful part of them, and the horizon matters more than the numbers. */
   #readout-panel {
     display: none;
+  }
+}
+
+/* Phone. The top bar stacking and the 44-point targets are in ui/theme.css;
+   these are the planetarium's own pieces. */
+@media (max-width: 480px) {
+  /*
+   * The vertical field slider is a 4-point track pinned to the right edge —
+   * unhittable with a thumb, and directly under it. Widened into a real target
+   * and pulled in from the edge, and moved off centre-height so that a thumb
+   * reaching for it does not have to cross the middle of the view to get there.
+   */
+  .zoombar {
+    top: auto;
+    bottom: 0;
+    transform: none;
+    right: calc(env(safe-area-inset-right, 0px) + var(--sp-2));
+  }
+
+  .zoombar input[type='range'] {
+    width: 32px;
+    height: calc(150px * var(--ui-scale));
+  }
+
+  /* The date field is the widest single control in either view; it gets the
+     whole row rather than a share of one. */
+  #time-input {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+
+  /* Two columns of coordinates in a panel that is now most of the screen wide
+     is the one place the grid is still worth keeping. */
+  .field-row .input {
+    width: calc(72px * var(--ui-scale));
+    min-height: 44px;
   }
 }

@@ -16,6 +16,7 @@
 import { el, css, show, append, text } from './dom.js';
 import { createPrefs } from './prefs.js';
 import { createShortcuts, prettyChord } from './shortcuts.js';
+import { platform } from '../engine/platform.js';
 import { createTooltips, slider, icon, dialog } from './components.js';
 
 const $ = (id) => document.getElementById(id);
@@ -179,12 +180,17 @@ export function createSkyUI({ controls, state, onModeChange, setRate, getRate })
 
   // ---------------------------------------------------------------- immersive
 
+  /* Assigned below, and only on touch, which is the only host that needs it. */
+  let immersiveHint = null;
+
   function setImmersive(on, instant = false) {
     if (instant) {
       css(document.body, 'no-ui-anim', true);
       void document.body.offsetWidth;
     }
     css(document.body, 'immersive', on);
+    // Kept off the captures, for the reason given in ui/explorer-ui.js.
+    if (immersiveHint) css(immersiveHint, 'is-silent', instant);
     if (instant) {
       void document.body.offsetWidth;
       css(document.body, 'no-ui-anim', false);
@@ -198,6 +204,25 @@ export function createSkyUI({ controls, state, onModeChange, setRate, getRate })
 
   const isImmersive = () => document.body.classList.contains('immersive');
   $('btn-immersive')?.addEventListener('click', () => setImmersive(true));
+
+  /*
+   * The way back out. On a desktop it is F11 or Esc and this view never said so,
+   * which was survivable there; on touch neither key exists, and the button just
+   * pressed to get in here has faded out with the rest of the interface. So the
+   * mode was a door that only locked.
+   *
+   * The explorer answers this with a hint that is itself the way out, and the
+   * rules that keep it visible and tappable are in theme.css, which this page
+   * already loads — so the fix is the same element, not a second mechanism.
+   */
+  if (platform.touch) {
+    immersiveHint = el('div', {
+      class: 'immersive-hint is-touch',
+      text: 'immersive mode \u2014 tap here to bring the interface back',
+      onClick: () => setImmersive(false),
+    });
+    document.body.append(immersiveHint);
+  }
 
   // ---------------------------------------------------------------- overlays
 

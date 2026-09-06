@@ -11,6 +11,7 @@
  * without any stylesheet or component knowing it happened.
  */
 
+import { platform } from '../engine/platform.js';
 import { VIEW_DEFAULTS } from './view-options.js';
 
 const KEY = 'skyview.ui.v1';
@@ -31,8 +32,12 @@ export const DEFAULTS = {
     // resolution it can afford, which beats any guess made from the hardware
     // string the browser reports.
     preset: 'auto',
-    targetFps: 60,
-    maxRenderScale: 1,
+    // From the device profile, because these are the two settings where the
+    // right starting point genuinely differs by class of machine. They are
+    // defaults and nothing more: a saved value is merged over the top, so
+    // someone who has moved either slider keeps what they chose.
+    targetFps: platform.targetFps,
+    maxRenderScale: platform.maxRenderScale,
   },
   // Which panels start open. Both views share this file, and a panel named here
   // by one is simply unused by the other.

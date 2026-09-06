@@ -1,4 +1,5 @@
 import { TextureLoader } from 'three';
+import { platform } from './engine/platform.js';
 
 const BASE = import.meta.env.BASE_URL ?? '/';
 const url = (p) => `${BASE.replace(/\/$/, '')}/${p}`;
@@ -40,13 +41,27 @@ function loadTexture(path) {
   });
 }
 
-/** Chooses a panorama resolution the current device can comfortably hold. */
-function pickPanoramaTier(maxTextureSize) {
-  if (maxTextureSize >= 4096 && window.devicePixelRatio * window.innerWidth > 900) {
-    return 'textures/milkyway-4k.jpg';
-  }
-  if (maxTextureSize >= 2048) return 'textures/milkyway-2k.jpg';
-  return 'textures/milkyway-1k.jpg';
+/**
+ * Chooses a panorama resolution the current device can comfortably hold.
+ *
+ * The width test is the reason this needs a profile rather than just a GL limit.
+ * A phone reports a device pixel ratio of 3, so dpr x width clears 900 on a
+ * screen four inches across and the heuristic written for desktops asks for the
+ * 4k panorama — the largest single texture in the scene, on the device least
+ * able to hold it.
+ */
+function pickPanoramaTier(maxTextureSize, tiers) {
+  const cap = Math.min(maxTextureSize, platform.panoramaMaxWidth);
+  // "milkyway-4k.jpg" -> 4096.
+  const widthOf = (name) => (Number(/(\d+)k/.exec(name)?.[1]) || 1) * 1024;
+  const available = (tiers?.length ? tiers : ['milkyway-4k.jpg', 'milkyway-2k.jpg', 'milkyway-1k.jpg'])
+    .map((name) => ({ name, width: widthOf(name) }))
+    .sort((a, b) => b.width - a.width);
+  // A small window does not benefit from the largest tier even on a machine
+  // that could hold it.
+  const wanted = window.devicePixelRatio * window.innerWidth > 900 ? cap : Math.min(cap, 2048);
+  const choice = available.find((tier) => tier.width <= wanted) ?? available[available.length - 1];
+  return `textures/${choice.name}`;
 }
 
 /**
@@ -62,7 +77,7 @@ export async function loadSpaceData({ maxTextureSize = 4096 } = {}) {
     fetchJson('data/exoplanets.json'),
     fetchJson('data/starnames.json'),
   ]);
-  const milkyWayTexture = await loadTexture(pickPanoramaTier(maxTextureSize));
+  const milkyWayTexture = await loadTexture(pickPanoramaTier(maxTextureSize, milkyWayMeta.tiers));
   return { catalog, milkyWayTexture, milkyWayMeta, galaxies, exoplanets, starNames };
 }
 
@@ -87,7 +102,7 @@ export async function loadSkyData({ maxTextureSize = 4096, onProgress = () => {}
   ]);
 
   onProgress('milky way panorama');
-  const milkyWayTexture = await loadTexture(pickPanoramaTier(maxTextureSize));
+  const milkyWayTexture = await loadTexture(pickPanoramaTier(maxTextureSize, milkyWayMeta.tiers));
 
   return {
     catalog,

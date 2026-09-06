@@ -9,6 +9,7 @@ import {
 } from 'three';
 import { equatorialToEcliptic, PC_KM } from './units.js';
 import { equatorialToVector } from '../astro.js';
+import { platform } from './platform.js';
 
 /** Schwarzschild radius of one solar mass, km. */
 export const RS_KM_PER_SOL = 2.953;
@@ -180,7 +181,7 @@ const VOLUME_FRAGMENT = /* glsl */ `
     float alpha = 0.0;
     bool captured = false;
 
-    for (int i = 0; i < 160; i++) {
+    for (int i = 0; i < ${platform.blackHoleSteps}; i++) {
       float r = length(p);
       if (r < 1.0) { captured = true; break; }
       if (r > BOUND * 1.2 && dot(p, rd) > 0.0) break;

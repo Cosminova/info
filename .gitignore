@@ -34,3 +34,10 @@ data-src/
 macos/build/
 xcuserdata/
 *.xcuserstate
+
+# Phone and tablet asset set, derived from public/ by scripts/mobile-assets.mjs,
+# and the iOS web build made from it. Both are reproducible output.
+public-mobile/
+dist-ios/
+ios/build/
+.mobile-assets.stamp

@@ -15,6 +15,7 @@
  * path and the pad cannot drift out of step with the keys it is advertising.
  */
 import { el, css, text } from './dom.js';
+import { platform } from '../engine/platform.js';
 
 /**
  * Mirrors the physical key positions. `code` is what gets pressed on the
@@ -33,6 +34,34 @@ const PAD = [
 /** The flySpeed range the slider spans, as a multiplier on altitude per second. */
 const SPEED_MIN = 0.1;
 const SPEED_MAX = 4;
+
+/**
+ * The line under the keycaps, in the words of the device.
+ *
+ * The keycaps stay labelled with their keys even on a phone, and deliberately:
+ * the label is what makes the pad and the keyboard visibly the same control, an
+ * iPad with a keyboard attached can press every one of them, and a button
+ * marked W is no more mysterious than a button marked with an arrow. What has
+ * to change is this line, which on a desktop names the keys as the way in and
+ * then names two things — steering, and the throttle while roaming — that are
+ * on a wheel and a drag. On a touch screen the keys are not the way in, and
+ * there is no wheel.
+ *
+ * Kept to the same length as the desktop pair, and not because brevity is a
+ * virtue in itself: on a phone this line is shown where the desktop hides it,
+ * and it has 342 points of a 366-point bar to say it in. A sentence one word
+ * longer wraps to two lines, and those twelve points come off the middle of the
+ * frame.
+ */
+const HINT = platform.touch
+  ? {
+    flying: 'Hold W/S to thrust \u00b7 slide A/D \u00b7 climb E, dive Q \u00b7 drag to steer',
+    roaming: 'Hold W/S to thrust \u00b7 slide A/D \u00b7 climb E, dive Q \u00b7 pinch sets speed',
+  }
+  : {
+    flying: 'Thrust W/S \u00b7 slide A/D \u00b7 climb E, dive Q \u00b7 drag to steer',
+    roaming: 'Thrust W/S \u00b7 slide A/D \u00b7 climb E, dive Q \u00b7 drag to turn \u00b7 wheel sets speed',
+  };
 
 export function createFlightControls({ controls, prefs }) {
   const buttons = [];
@@ -94,7 +123,7 @@ export function createFlightControls({ controls, prefs }) {
     type: 'button',
     class: 'flight-boost',
     text: 'Boost',
-    'data-tip': 'Fly four times faster (hold Shift)',
+    'data-tip': platform.touch ? 'Fly four times faster' : 'Fly four times faster (hold Shift)',
     'aria-pressed': 'false',
     onClick: () => {
       const on = boost.getAttribute('aria-pressed') !== 'true';
@@ -131,7 +160,7 @@ export function createFlightControls({ controls, prefs }) {
 
   const hint = el('div', {
     class: 'flight-hint',
-    text: 'Thrust W/S \u00b7 slide A/D \u00b7 climb E, dive Q \u00b7 drag to steer',
+    text: HINT.flying,
   });
 
   const root = el('div', { class: 'flight takes-pointer', hidden: true }, [
@@ -197,9 +226,7 @@ export function createFlightControls({ controls, prefs }) {
     setRoaming(on) {
       if (on === roaming) return;
       roaming = on;
-      hint.textContent = on
-        ? 'Thrust W/S \u00b7 slide A/D \u00b7 climb E, dive Q \u00b7 drag to turn \u00b7 wheel sets speed'
-        : 'Thrust W/S \u00b7 slide A/D \u00b7 climb E, dive Q \u00b7 drag to steer';
+      hint.textContent = on ? HINT.roaming : HINT.flying;
     },
 
     /** Reflects keyboard presses on the pad, so the two never look unrelated. */

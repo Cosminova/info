@@ -44,6 +44,7 @@ import {
 import { colorIndexToSpectralHint } from './color.js';
 import { createAmbient, sceneWeights } from './engine/ambient.js';
 import { createSkyUI } from './ui/sky-ui.js';
+import { basePixelRatio, platform } from './engine/platform.js';
 
 const $ = (id) => document.getElementById(id);
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -107,7 +108,7 @@ const renderer = new WebGLRenderer({
   alpha: false,
 });
 renderer.setClearColor(0x000000, 1);
-renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+renderer.setPixelRatio(basePixelRatio());
 // Every layer is additive and depth-independent with an explicit renderOrder,
 // so three's own transparency sort would only cost time (and it demands
 // bounding spheres for geometry that is positioned entirely in the shader).
@@ -115,8 +116,8 @@ renderer.sortObjects = false;
 
 const gl = renderer.getContext();
 const maxPointSize = Math.min(
-  90,
-  gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)?.[1] ?? 90,
+  platform.maxPointSize,
+  gl.getParameter(gl.ALIASED_POINT_SIZE_RANGE)?.[1] ?? platform.maxPointSize,
 );
 const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
 
@@ -146,7 +147,10 @@ progress('building the sky');
 const starField = new StarField({
   catalog: data.catalog,
   maxPointSize,
-  faintCount: 600000,
+  // The synthetic faint population is what makes the sky look continuous rather
+  // than like a catalogue plotted on black. It is also 600k points of buffer, so
+  // the mobile profiles carry a fraction of it and lean on the real catalogue.
+  faintCount: platform.faintStars,
 });
 for (const object of starField.objects) skyGroup.add(object);
 

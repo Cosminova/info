@@ -29,6 +29,7 @@ import { hydrostaticAxes, isLocked, rotationalAxes } from './figures.js';
 import { bodyGeology } from './geology.js';
 import { SHADOW_GLSL } from './shadow-glsl.js';
 import { CRATER_DETAIL_MARGIN, CRATER_LACUNARITY, TERRAIN_GLSL } from './terrain-glsl.js';
+import { platform } from './platform.js';
 
 /** Patch budget for a body that does not ask for its own. */
 const DEFAULT_MAX_PATCHES = 2400;
@@ -1320,7 +1321,7 @@ const SKY_COMMON = /* glsl */ `
    * the whole dense near end goes uncounted.
    */
   vec2 columnAlong(vec3 o, vec3 d, float len) {
-    const int N = 6;
+    const int N = ${platform.skyColumnSamples};
     vec2 sum = vec2(0.0);
     float prev = 0.0;
     for (int i = 0; i < N; i++) {
@@ -1407,7 +1408,7 @@ const SKY_INSCATTER_FRAGMENT = /* glsl */ `
     float near, len;
     if (!viewSegment(origin, ray, near, len)) discard;
 
-    const int STEPS = 24;
+    const int STEPS = ${platform.skyInscatterSteps};
 
     float mu = dot(ray, uSunDir);
     // Rayleigh: 3/(16 pi) (1 + cos^2). Mie: Henyey-Greenstein.

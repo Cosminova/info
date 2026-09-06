@@ -30,6 +30,16 @@
 	<true/>
 
 	<!--
+	  False is accurate only while the app implements no cryptography and makes
+	  no outbound requests: every catalogue and texture loads from the bundle
+	  over a relative path, so the TLS stack is never reached. Adding any
+	  network call means revisiting this and the export-compliance answers in
+	  App Store Connect.
+	-->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+
+	<!--
 	  The nearest thing WebKit has to Chromium's force_high_performance_gpu,
 	  which is what the Electron shell asks for and cannot be requested from a
 	  page. False means the app does not consent to running on the integrated
