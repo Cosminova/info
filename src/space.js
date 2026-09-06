@@ -45,8 +45,8 @@ import {
 import { BodyTextures } from './engine/textures.js';
 import { OrbitApproachControls } from './engine/camera-controls.js';
 import { DeepField } from './engine/deep-field.js';
-import { ExoSystem, teffToBv } from './engine/exo-system.js';
-import { inventGalaxySystems } from './engine/generated.js';
+import { ExoSystem, exoKey, teffToBv } from './engine/exo-system.js';
+import { inventBlackHoleSystems, inventGalaxySystems } from './engine/generated.js';
 import { BlackHole, BLACK_HOLES } from './engine/black-hole.js';
 import { buildColorLookup, colorIndexToLinearRgb } from './color.js';
 import { describeStar, spectralTemperature, surfaceBrightness, SOLAR_TEFF } from './engine/stellar.js';
@@ -57,7 +57,9 @@ import { createQuality } from './engine/quality.js';
 import { CraftField } from './engine/craft-motion.js';
 import { createCraftRenderer } from './engine/craft-render.js';
 import { CRAFT_KINDS, DATA_TIERS } from './engine/craft-missions.js';
-import { formatDistance, PC_KM, SOLAR_RADIUS_KM, equatorialToEcliptic } from './engine/units.js';
+import {
+  AU_KM, EARTH_RADIUS_KM, formatDistance, PC_KM, SOLAR_RADIUS_KM, equatorialToEcliptic,
+} from './engine/units.js';
 import { equatorialToVector } from './astro.js';
 import { createExplorerUI } from './ui/explorer-ui.js';
 import { createHome } from './ui/home.js';
@@ -546,7 +548,7 @@ for (const system of data.exoplanets.systems) {
     });
   }
   for (const planet of system.planets ?? []) {
-    const key = `exo:${planet.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+    const key = exoKey(planet.name);
     // The invented systems inside nearby galaxies claim keys in this same
     // namespace, and a real planet must not quietly displace one.
     if (destByKey.has(key)) continue;
@@ -559,6 +561,40 @@ for (const system of data.exoplanets.systems) {
       planetName: planet.name,
       distPc: system.distPc,
     });
+  }
+}
+
+/*
+ * The stars of a double, told about each other.
+ *
+ * The archive keys a planet to the star it actually orbits, which is the right
+ * answer to a different question: a binary where both components carry planets
+ * arrives here as two systems with nothing to say they are the same place. Five
+ * of them are — Gl 725, TOI-2267, HD 41004, HD 133131, WASP-94 — and each was
+ * listed as two unrelated stars filed under "Exoplanets", one of them often
+ * some tens of astronomical units from the other.
+ *
+ * Only where both components are present. The other hundred-odd lettered hosts
+ * have a companion the archive names and knows nothing else about, and a row in
+ * a system panel for a star with no position and no planets would be a claim
+ * this atlas cannot make good on. The count in `starCount` says how many are up
+ * there either way.
+ */
+const components = new Map();
+for (const dest of destinations) {
+  if (dest.kind !== 'star' || !dest.system?.host) continue;
+  const stem = /^(.*?)[ -]([A-C])$/.exec(dest.system.host)?.[1];
+  if (!stem) continue;
+  if (!components.has(stem)) components.set(stem, []);
+  components.get(stem).push(dest);
+}
+for (const [stem, stars] of components) {
+  if (stars.length < 2) continue;
+  for (const star of stars) {
+    // Filed under the pair rather than under the catalogue at large, which is
+    // the same rule the invented stars follow: a star belongs to its system.
+    star.group = stem;
+    star.companions = stars.filter((other) => other !== star).map((other) => other.key);
   }
 }
 
@@ -576,18 +612,26 @@ for (let i = 0; i < data.galaxies.galaxies.length; i++) {
   });
 }
 
-const invented = inventGalaxySystems(data.galaxies.galaxies, deepField.galaxyWorld);
-for (const system of invented) {
+/**
+ * One invented system in the destination list: the host star, then its planets.
+ *
+ * The galaxies and the black holes both get systems out of engine/generated.js
+ * and they are registered identically — the only difference is what the star
+ * belongs to, which is the galaxy it is in or the hole it orbits. `group` is
+ * what the search list and the catalogue file it under, so a star that hosts
+ * planets is filed under the thing it is part of rather than under itself.
+ */
+function registerInventedSystem(system, hostGroup) {
   addDestination({
     key: `star:${system.host}`,
     name: system.host,
     kind: 'star',
-    group: system.galaxy,
+    group: hostGroup,
     system,
   });
   for (const planet of system.planets) {
     addDestination({
-      key: `exo:${planet.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`,
+      key: exoKey(planet.name),
       name: planet.name,
       kind: 'exo-planet',
       group: system.host,
@@ -595,6 +639,10 @@ for (const system of invented) {
       planetName: planet.name,
     });
   }
+}
+
+for (const system of inventGalaxySystems(data.galaxies.galaxies, deepField.galaxyWorld)) {
+  registerInventedSystem(system, system.galaxy);
 }
 
 for (const spec of BLACK_HOLES) {
@@ -605,6 +653,20 @@ for (const spec of BLACK_HOLES) {
     group: 'Black holes',
     spec,
   });
+}
+
+/*
+ * And what orbits them, which until now was nothing at all.
+ *
+ * Registered after the holes so a hole is in the destination list before the
+ * stars that name it as theirs, and grouped under the hole's own name: the
+ * search list and the catalogue then file these stars under Sagittarius A*
+ * rather than in with the catalogue stars, and satellitesOf can hand the
+ * hole's system panel its own contents. See inventBlackHoleSystems.
+ */
+const holeSystems = inventBlackHoleSystems([...blackHoles.values()]);
+for (const system of holeSystems) {
+  registerInventedSystem(system, system.holeName);
 }
 
 destinations.sort((a, b) => a.name.localeCompare(b.name));
@@ -1111,7 +1173,104 @@ const J2000_MS = Date.UTC(2000, 0, 1, 12, 0, 0);
 function satellitesOf(key) {
   const carried = BODIES.filter((b) => b.parent === key);
   const moons = MOONS.filter((m) => m.parent === key);
-  return [...carried, ...moons].sort((a, b) => b.radiusKm - a.radiusKm);
+  if (carried.length || moons.length) {
+    return [...carried, ...moons].sort((a, b) => b.radiusKm - a.radiusKm);
+  }
+  return membersOf(key);
+}
+
+/**
+ * The same question asked of anything that is not a solar system body.
+ *
+ * BODIES and MOONS are the Sun's, so the answer above is "nothing" for every
+ * other kind — and the system panel took that literally. Standing at TRAPPIST-1
+ * with seven planets around it, or at a star in Andromeda with four, it said "no
+ * known satellites"; at a black hole it said the same because nothing orbited
+ * them at all, which is now no longer true. A system is a system wherever it is.
+ *
+ * Rows want `key`, `name` and either `radiusKm` or a `note` to show instead.
+ */
+function membersOf(key) {
+  const dest = destByKey.get(key);
+
+  // A star with planets. Taken from the live system when this is the one that
+  // is loaded, which it is whenever you are actually in it: those specs carry
+  // the radii the scene is drawing rather than the archive's earth-radii.
+  if (exoSystem && key === exoSystem.key) {
+    const planets = exoSystem.planets
+      .map((item) => ({ key: item.spec.key, name: item.spec.name, radiusKm: item.spec.radiusKm }))
+      .sort((a, b) => b.radiusKm - a.radiusKm);
+    return [...planets, ...companionsOf(dest)];
+  }
+  if (exoSystem) {
+    // A planet of one: its moons, which are not destinations of their own but
+    // resolve by spec key, so the panel can still travel to them.
+    const item = exoSystem.planets.find((planet) => planet.spec.key === key);
+    if (item) {
+      return item.moons
+        .map((moon) => ({ key: moon.spec.key, name: moon.spec.name, radiusKm: moon.spec.radiusKm }))
+        .sort((a, b) => b.radiusKm - a.radiusKm);
+    }
+  }
+  // The same star before its system has been loaded: the record is enough to
+  // list what is there, so the panel is filled on arrival rather than a frame
+  // later.
+  if (dest?.system && dest.system.host === dest.name) {
+    const planets = (dest.system.planets ?? [])
+      .map((planet) => ({
+        key: exoKey(planet.name),
+        name: planet.name,
+        radiusKm: (planet.radiusEarth ?? 1) * EARTH_RADIUS_KM,
+      }))
+      .sort((a, b) => b.radiusKm - a.radiusKm);
+    return [...planets, ...companionsOf(dest)];
+  }
+  // A galaxy or a black hole: the stars filed under it, nearest first for the
+  // hole since how far out they orbit is the thing that distinguishes them.
+  if (dest?.kind === 'galaxy') return hostsIn((system) => system.galaxy === dest.name);
+  if (dest?.kind === 'black-hole') return hostsIn((system) => system.hole === dest.spec.key);
+  return [];
+}
+
+/** The other stars of a double, listed with the planets of this one. */
+function companionsOf(dest) {
+  return (dest?.companions ?? []).map((key) => {
+    const other = destByKey.get(key);
+    return {
+      key,
+      name: other?.name ?? key,
+      note: 'companion star',
+      radiusKm: (other?.system?.radiusSol ?? 1) * SOLAR_RADIUS_KM,
+    };
+  });
+}
+
+/** The invented host stars matching `predicate`, as system panel rows. */
+function hostsIn(predicate) {
+  const rows = [];
+  for (const dest of destinations) {
+    if (dest.kind !== 'star' || !dest.system || !predicate(dest.system)) continue;
+    rows.push({
+      key: dest.key,
+      name: dest.name,
+      // A radius in kilometres is no use next to a star, and for the holes the
+      // orbit is the fact worth having.
+      note: dest.system.orbitAu
+        ? `${formatAu(dest.system.orbitAu)} out`
+        : `${(dest.system.planets?.length ?? 0)} planets`,
+      radiusKm: (dest.system.radiusSol ?? 1) * SOLAR_RADIUS_KM,
+      orbitAu: dest.system.orbitAu ?? 0,
+    });
+  }
+  return rows.sort((a, b) => (a.orbitAu || Infinity) - (b.orbitAu || Infinity)
+    || b.radiusKm - a.radiusKm);
+}
+
+/** Astronomical units, or parsecs once they stop being a readable number. */
+function formatAu(au) {
+  const pc = (au * AU_KM) / PC_KM;
+  if (pc >= 0.1) return `${pc.toFixed(pc >= 10 ? 0 : 1)} pc`;
+  return `${au < 100 ? au.toFixed(0) : Math.round(au / 10) * 10} AU`;
 }
 
 controls.onClick = (x, y) => {
@@ -2657,6 +2816,23 @@ window.cosminova = {
     return quality.settings.preset;
   },
   pick,
+  /**
+   * What the system panel would be given at `key`.
+   *
+   * On the surface because the panel's contents are now worked out for stars,
+   * galaxies and black holes as well as for moons, and a check that reads the
+   * rendered panel can only see the forty rows it draws and none of the keys
+   * behind them — which is exactly where a system of names that resolve to
+   * nothing would hide. See membersOf.
+   */
+  systemMembers(key) {
+    return satellitesOf(key).map((member) => ({
+      key: member.key,
+      name: member.name,
+      radiusKm: member.radiusKm,
+      note: member.note ?? null,
+    }));
+  },
   stats() {
     return {
       target: state.target,

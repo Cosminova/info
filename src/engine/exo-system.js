@@ -10,7 +10,16 @@ import { equatorialToVector } from '../astro.js';
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const IDENTITY = new Quaternion();
 
-function slug(name) {
+/**
+ * The key a planet or moon of another star is known by, everywhere.
+ *
+ * Exported because space.js registers the same bodies as destinations and used
+ * to spell this out again inline. Two copies of a key format is one copy too
+ * many: a row in the destination list whose key does not match the spec key the
+ * scene builds resolves to nothing, and the failure is a search result that
+ * cannot be travelled to rather than an error.
+ */
+export function exoKey(name) {
   return `exo:${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 }
 
@@ -48,7 +57,7 @@ function specFromPlanet(entry, described, hostKey) {
     : 0;
   const stops = described.palette;
   return {
-    key: slug(entry.name),
+    key: exoKey(entry.name),
     name: entry.name,
     parent: hostKey,
     radiusKm: described.radiusKm,
@@ -107,7 +116,7 @@ function specFromMoon(entry, described, parentKey) {
   // saturated surface because they have had no resurfacing to erase anything.
   const craterFreq = clamp(radiusKm * 0.12, 8, 260);
   return {
-    key: slug(entry.name),
+    key: exoKey(entry.name),
     name: entry.name,
     parent: parentKey,
     radiusKm,

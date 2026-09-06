@@ -112,8 +112,23 @@ export function createSearch({ destinations, resolve, craftStatus, onPick, onAct
       if (c.launched) parts.push(`launched ${String(c.launched).slice(0, 4)}`);
       return parts.join('  \u00b7  ');
     }
-    if (dest.system?.host) parts.push(dest.system.host);
+    /*
+     * What this belongs to, which for a planet is its star and for a star is
+     * never itself.
+     *
+     * A host star carries the same system record its planets do, so this read
+     * "Fornax A beta · Fornax A beta" for every star with worlds around it —
+     * the one line of the row that exists to place the object, spent repeating
+     * the name directly above it. The group is what places a star: the galaxy
+     * it is in, or the black hole it orbits.
+     */
+    const hostsIt = dest.system?.host && dest.system.host !== dest.name;
+    if (hostsIt) parts.push(dest.system.host);
     else if (dest.group) parts.push(dest.group);
+    // And that it is a system at all, which is the fact a star's own name and
+    // its group between them still do not give.
+    const planets = dest.system?.planets?.length ?? 0;
+    if (!hostsIt && planets) parts.push(`${planets} planet${planets === 1 ? '' : 's'}`);
     const resolved = resolve(dest.key);
     if (resolved?.ra != null && resolved?.dec != null) {
       const ra = resolved.ra;

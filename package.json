@@ -35,6 +35,7 @@
     "check:lod": "node scripts/lod-check.mjs",
     "check:geology": "node scripts/geology-check.mjs",
     "check:dest": "node scripts/dest-check.mjs",
+    "check:system": "node scripts/system-check.mjs",
     "check:flight": "node scripts/flight-check.mjs",
     "check:roam": "node scripts/roam-check.mjs",
     "check:onboard": "node scripts/onboard-check.mjs",

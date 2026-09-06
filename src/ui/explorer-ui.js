@@ -966,7 +966,10 @@ export function createExplorerUI(config) {
     if (!resolved) return;
     const spec = resolved.spec;
     // The system shown is the one you are in: the primary of a moon, or the body
-    // itself when it has satellites of its own.
+    // itself when it has satellites of its own. A planet of another star names
+    // its host the same way a moon names its planet, so arriving at one of those
+    // shows the star and its siblings without this needing to know the
+    // difference.
     const rootKey = spec?.parent && spec.parent !== 'sun' ? spec.parent : resolved.key;
     const rootResolved = resolveWorld(rootKey);
     const satellites = hooks.satellitesOf(rootKey);
@@ -981,7 +984,12 @@ export function createExplorerUI(config) {
         onClick: () => hooks.selectTarget(rootKey, { fly: true }),
       })];
       if (!satellites.length) {
-        rows.push(el('p', { class: 'obj-empty', text: 'No known satellites.' }));
+        // Worded for what is being looked at. "No known satellites" is right at
+        // Mercury and wrong at a star, where the question was what orbits it.
+        const empty = rootResolved.kind === 'star' || rootResolved.kind === 'black-hole'
+          ? 'Nothing known in orbit.'
+          : 'No known satellites.';
+        rows.push(el('p', { class: 'obj-empty', text: empty }));
         return rows;
       }
       rows.push(el('div', { class: 'tree-kids' }, satellites.slice(0, 40).map((moon) =>
@@ -991,7 +999,10 @@ export function createExplorerUI(config) {
           onClick: () => hooks.selectTarget(moon.key, { fly: true }),
         }, [
           el('span', { class: 'tree-name', text: moon.name }),
-          el('span', { class: 'tree-size', text: `${Math.round(moon.radiusKm)} km` }),
+          // A radius is the useful number for a moon and a useless one for a
+          // star, so a row is allowed to bring its own: how far out it orbits,
+          // or how many planets it has. See membersOf in space.js.
+          el('span', { class: 'tree-size', text: moon.note ?? `${Math.round(moon.radiusKm)} km` }),
         ]))));
       return rows;
     });
