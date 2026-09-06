@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Required by the Mac App Store. Without it an upload is refused at
+	  validation with 90296 rather than at review, which is what happened.
+	-->
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+
+	<!--
+	  Not because the app talks to anything: the scene is served out of the
+	  bundle by WebAssetSchemeHandler and every fetch in the engine is relative
+	  to it, so there is nothing to reach for.
+
+	  It is here because WKWebView does not load at all without it. WebKit puts
+	  every load through its networking process, a custom scheme included, and
+	  in a sandbox with no outgoing network that process cannot do its half of
+	  the work. The failure is silent in a way that wastes an afternoon: the
+	  navigation delegate reports no error and nothing is logged, and the
+	  window simply stays the black it was already painted. Adding this back is
+	  the difference between the scene and that black window — tested both
+	  ways, sandboxed, before this comment was written.
+	-->
+	<key>com.apple.security.network.client</key>
+	<true/>
+</dict>
+</plist>
