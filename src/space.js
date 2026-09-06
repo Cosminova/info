@@ -2092,6 +2092,24 @@ function frame(now) {
     }
   }
 
+  /*
+   * Only the star being looked at is drawn as a sphere; every other star in
+   * the sky is the deep field's business.
+   *
+   * This has to be reasserted every frame rather than on a change of target.
+   * Group positions here are offsets from a floating origin that moves with
+   * the camera, so a mesh that simply stops being updated keeps the offset it
+   * last had — which means it stops sitting at a fixed point in space and
+   * starts following the camera around. Visit Betelgeuse, then fly to Mars,
+   * and a 712-solar-radius sphere comes along and hangs in the sky behind it.
+   *
+   * The meshes are kept rather than disposed: they are cached per star because
+   * building one is not free, and hiding is enough.
+   */
+  for (const [key, mesh] of starMeshes) {
+    mesh.group.visible = key === resolved?.key;
+  }
+
   if (resolved?.kind === 'star' && resolved.key !== 'sun') {
     const mesh = ensureStarMesh(resolved);
     if (mesh && exoSystem?.key !== resolved.key) {

@@ -34,6 +34,8 @@
     "check:onboard": "node scripts/onboard-check.mjs",
     "render:video": "node scripts/render-video.mjs",
     "check:travel": "node scripts/travel-check.mjs",
+    "check:drag": "node scripts/drag-check.mjs",
+    "check:star": "node scripts/star-check.mjs",
     "check:zoom": "node scripts/zoom-check.mjs",
     "check:relief": "node scripts/relief-check.mjs mars && node scripts/relief-check.mjs moon"
   },
@@ -71,7 +73,7 @@
           "arch": ["x64"]
         }
       ],
-      "artifactName": "Cosminova-Setup-${version}.${ext}"
+      "artifactName": "Cosminova-Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
