@@ -1,15 +1,19 @@
 import {
+  AdditiveBlending,
   BackSide,
+  Color,
   Group,
   Mesh,
+  PlaneGeometry,
   ShaderMaterial,
   Sphere,
   SphereGeometry,
   Vector3,
 } from 'three';
-import { equatorialToEcliptic, PC_KM } from './units.js';
+import { AU_KM, equatorialToEcliptic, PC_KM } from './units.js';
 import { equatorialToVector } from '../astro.js';
 import { platform } from './platform.js';
+import { pointGlare } from './star.js';
 
 /** Schwarzschild radius of one solar mass, km. */
 export const RS_KM_PER_SOL = 2.953;
@@ -129,6 +133,29 @@ const VOLUME_FRAGMENT = /* glsl */ `
   }
 
   /**
+   * The same, repeating every "period" cells across x.
+   *
+   * The disk's structure is sampled in azimuth, and azimuth wraps: where atan
+   * comes back round it jumps from +pi to -pi, and an ordinary lattice returns
+   * a different cell either side of a line that is not there. It showed as a
+   * seam running straight out from the shadow across every ring, the one place
+   * the disk did not look like one piece. Wrapping the lattice instead of the
+   * coordinate keeps the bands continuous all the way round, and leaves the
+   * pattern free to shear with the orbital motion.
+   */
+  float ringNoise(vec2 p, float period) {
+    vec2 i = floor(p);
+    vec2 f = fract(p);
+    f = f * f * (3.0 - 2.0 * f);
+    float x0 = mod(i.x, period);
+    float x1 = mod(i.x + 1.0, period);
+    return mix(
+      mix(hash(vec2(x0, i.y)), hash(vec2(x1, i.y)), f.x),
+      mix(hash(vec2(x0, i.y + 1.0)), hash(vec2(x1, i.y + 1.0)), f.x),
+      f.y);
+  }
+
+  /**
    * Colour of a blackbody at a given temperature. Helland's fit to the
    * Planckian locus, which holds from about 1000 K to 40000 K.
    */
@@ -203,8 +230,8 @@ const VOLUME_FRAGMENT = /* glsl */ `
           // stops the pattern from turning as a rigid wheel.
           float omega = 0.7 / pow(rho, 1.5);
           float u = phi / 6.2831853 + uTime * omega;
-          float bands = noise(vec2(u * 26.0, rho * 1.7)) * 0.55
-                      + noise(vec2(u * 61.0, rho * 4.1)) * 0.3;
+          float bands = ringNoise(vec2(u * 26.0, rho * 1.7), 26.0) * 0.55
+                      + ringNoise(vec2(u * 61.0, rho * 4.1), 61.0) * 0.3;
           float dens = smoothstep(R_OUT, R_OUT * 0.45, rho)
                      * smoothstep(R_IN, R_IN * 1.35, rho)
                      * (0.55 + 0.9 * bands);
@@ -266,6 +293,53 @@ const VOLUME_FRAGMENT = /* glsl */ `
   }
 `;
 
+const GLARE_VERTEX = /* glsl */ `
+  #include <common>
+  #include <logdepthbuf_pars_vertex>
+
+  uniform float uScale;
+  varying vec2 vUv;
+  void main() {
+    vUv = position.xy;
+    vec4 centre = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+    centre.xy += position.xy * uScale;
+    gl_Position = projectionMatrix * centre;
+
+    #include <logdepthbuf_vertex>
+  }
+`;
+
+const GLARE_FRAGMENT = /* glsl */ `
+  precision highp float;
+
+  #include <common>
+  #include <logdepthbuf_pars_fragment>
+
+  uniform vec3 uColour;
+  uniform float uIntensity;
+  varying vec2 vUv;
+
+  void main() {
+    float d = length(vUv);
+    if (d >= 1.0) discard;
+
+    #include <logdepthbuf_fragment>
+
+    // A saturated core inside a broad faint halo: the shape a bright point
+    // takes in any real optic.
+    float glow = exp(-d * 7.0) * 0.9 + exp(-d * 1.7) * 0.2;
+    glow *= pow(1.0 - d, 1.5);
+    gl_FragColor = vec4(uColour * uIntensity * glow, 1.0);
+  }
+`;
+
+const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+/** Solar luminosities a hole of this mass puts out accreting at its limit. */
+function eddingtonLuminositySol(massSol) {
+  return 3.2e4 * massSol;
+}
+
 export class BlackHole {
   constructor(spec) {
     this.spec = spec;
@@ -309,6 +383,34 @@ export class BlackHole {
     this.mesh.frustumCulled = false;
     this.mesh.renderOrder = 4;
     this.group.add(this.mesh);
+
+    /*
+     * What the hole looks like from far enough away to be a point.
+     *
+     * The ray-marched volume stops at 55 Schwarzschild radii, which for a
+     * stellar-mass hole is a few thousand kilometres: from the worlds put in
+     * orbit around Cygnus X-1, a couple of hundred au out, it covers a
+     * ten-millionth of a pixel and nothing is drawn at all. But an accreting
+     * hole is one of the brightest things there is, so at that range it should
+     * be the brightest point in their sky, not an absence.
+     */
+    this.glareMaterial = new ShaderMaterial({
+      uniforms: {
+        uColour: { value: new Color(1, 0.93, 0.86) },
+        uIntensity: { value: 0 },
+        uScale: { value: this.outerKm },
+      },
+      vertexShader: GLARE_VERTEX,
+      fragmentShader: GLARE_FRAGMENT,
+      blending: AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+    });
+    this.glare = new Mesh(new PlaneGeometry(2, 2), this.glareMaterial);
+    this.glare.frustumCulled = false;
+    this.glare.renderOrder = 20;
+    this.group.add(this.glare);
+    this.luminositySol = eddingtonLuminositySol(spec.massSol);
   }
 
   /**
@@ -323,9 +425,21 @@ export class BlackHole {
       .normalize();
   }
 
-  update({ cameraLocal, time, visible = true }) {
+  update({ cameraLocal, time, visible = true, pixelsPerRadian = 0, exposure = 1 }) {
     this.material.uniforms.uCameraLocal.value.copy(cameraLocal);
     this.material.uniforms.uTime.value = time;
     this.group.visible = visible;
+
+    const distanceKm = Math.max(cameraLocal.length(), 1);
+    const volumePixels = pixelsPerRadian ? (this.outerKm / distanceKm) * pixelsPerRadian * 2 : Infinity;
+    // Handed over between four and fourteen pixels, so the point does not sit
+    // on top of a disk that has become big enough to draw itself.
+    const point = 1 - clamp((volumePixels - 4) / 10, 0, 1);
+    this.glare.visible = point > 0.01;
+    if (!this.glare.visible) return;
+    const au = distanceKm / AU_KM;
+    const glare = pointGlare((this.luminositySol / Math.max(au * au, 1e-9)) * exposure);
+    this.glareMaterial.uniforms.uScale.value = (glare.pixels * distanceKm) / (2 * pixelsPerRadian);
+    this.glareMaterial.uniforms.uIntensity.value = glare.intensity * point;
   }
 }

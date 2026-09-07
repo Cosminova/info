@@ -156,52 +156,182 @@ export function volatileClass({ bulk, temperatureK, massEarth, radiusEarth }, ra
 
 const lerp = (a, b, t) => a + (b - a) * t;
 const mixColour = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+const clamp01 = (v) => (v < 0 ? 0 : v > 1 ? 1 : v);
 
-// Eight stops from the deepest sea to the highest peak, the same ordering
-// SpaceEngine's surface palettes use. Anything without an ocean simply never
-// samples the first stops.
-const PALETTES = {
-  ferria: {
-    sea: [0.06, 0.05, 0.05],
-    shelf: [0.09, 0.07, 0.06],
-    beach: [0.24, 0.16, 0.12],
-    desert: [0.35, 0.2, 0.14],
-    lowland: [0.3, 0.18, 0.14],
-    upland: [0.26, 0.17, 0.15],
-    rock: [0.2, 0.15, 0.14],
-    snow: [0.5, 0.42, 0.38],
-  },
-  terra: {
-    sea: [0.02, 0.05, 0.12],
-    shelf: [0.05, 0.13, 0.24],
-    beach: [0.5, 0.45, 0.33],
-    desert: [0.44, 0.36, 0.24],
-    lowland: [0.2, 0.26, 0.14],
-    upland: [0.26, 0.24, 0.17],
-    rock: [0.3, 0.28, 0.25],
-    snow: [0.86, 0.88, 0.9],
-  },
-  aquaria: {
-    sea: [0.03, 0.08, 0.16],
-    shelf: [0.08, 0.2, 0.3],
-    beach: [0.55, 0.58, 0.6],
-    desert: [0.5, 0.52, 0.55],
-    lowland: [0.42, 0.48, 0.52],
-    upland: [0.5, 0.55, 0.58],
-    rock: [0.44, 0.47, 0.5],
-    snow: [0.92, 0.94, 0.97],
-  },
-  carbonia: {
-    sea: [0.04, 0.03, 0.03],
-    shelf: [0.07, 0.06, 0.05],
-    beach: [0.16, 0.14, 0.12],
-    desert: [0.2, 0.17, 0.14],
-    lowland: [0.12, 0.11, 0.1],
-    upland: [0.15, 0.14, 0.13],
-    rock: [0.1, 0.1, 0.1],
-    snow: [0.35, 0.34, 0.33],
-  },
+/**
+ * Hue rotation, saturation and lightness on an RGB triple.
+ *
+ * Two worlds of the same composition are not the same colour: how much dust is
+ * on the plains, how oxidised the iron is and how long the surface has been
+ * exposed all move the hue a little without changing what the rock is. Working
+ * in HSV rather than scaling the channels keeps the shift a shift — scaling red
+ * turns every mineral orange, whereas rotating the hue moves rust towards
+ * ochre and basalt towards slate, which is what those surfaces actually do.
+ */
+function shift([r, g, b], { hue = 0, saturation = 1, value = 1 }) {
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const span = max - min;
+  let h = 0;
+  if (span > 1e-6) {
+    if (max === r) h = ((g - b) / span) % 6;
+    else if (max === g) h = (b - r) / span + 2;
+    else h = (r - g) / span + 4;
+    h /= 6;
+  }
+  const s = clamp01((max > 1e-6 ? span / max : 0) * saturation);
+  const v = clamp01(max * value);
+  h = (h + hue + 1) % 1;
+
+  const sector = h * 6;
+  const i = Math.floor(sector);
+  const f = sector - i;
+  const p = v * (1 - s);
+  const q = v * (1 - s * f);
+  const t = v * (1 - s * (1 - f));
+  switch (i % 6) {
+    case 0: return [v, t, p];
+    case 1: return [q, v, p];
+    case 2: return [p, v, t];
+    case 3: return [p, q, v];
+    case 4: return [t, p, v];
+    default: return [v, p, q];
+  }
+}
+
+/**
+ * What the ground is made of, as the colour of its low plains, its uplands and
+ * its highest exposed rock.
+ *
+ * Bulk composition — which is all the catalogue can tell you — fixes the
+ * interior, not the surface. Mars and the Moon are both rock over iron and look
+ * nothing alike, because what you see is the top few metres: how oxidised the
+ * iron is, whether lava resurfaced the plains, whether organics or salts or
+ * frost have collected on top. That is unmeasurable at interstellar distance,
+ * so it is drawn per planet from these, weighted by the conditions each
+ * mineralogy needs.
+ */
+const MINERALS = {
+  // Fresh volcanic rock, the darkest common surface: the lunar maria.
+  basalt: { low: [0.08, 0.08, 0.09], mid: [0.19, 0.19, 0.2], high: [0.44, 0.43, 0.45] },
+  // Oxidised iron. Needs only a trace of atmosphere and a long time.
+  rust: { low: [0.25, 0.11, 0.06], mid: [0.45, 0.22, 0.12], high: [0.7, 0.47, 0.33] },
+  // Wind-laid silicate dust over anything else, which is most of Mars.
+  ochre: { low: [0.3, 0.24, 0.15], mid: [0.51, 0.42, 0.26], high: [0.76, 0.69, 0.51] },
+  // Vegetation. Only where there is liquid water and a temperate surface.
+  verdant: { low: [0.12, 0.21, 0.1], mid: [0.27, 0.35, 0.15], high: [0.57, 0.53, 0.39] },
+  // Olivine and serpentine, the green-grey of ultramafic crust.
+  jade: { low: [0.1, 0.19, 0.17], mid: [0.23, 0.37, 0.31], high: [0.55, 0.62, 0.55] },
+  // Volcanic sulphur, as on Io: brilliant yellow, and it needs the heat.
+  sulphur: { low: [0.35, 0.26, 0.07], mid: [0.64, 0.53, 0.13], high: [0.88, 0.82, 0.42] },
+  // Organic haze fallout. Titan's colour, and it wants cold and an atmosphere.
+  tholin: { low: [0.28, 0.15, 0.07], mid: [0.56, 0.32, 0.13], high: [0.82, 0.61, 0.33] },
+  // Water and nitrogen frost.
+  frost: { low: [0.45, 0.51, 0.58], mid: [0.69, 0.75, 0.81], high: [0.93, 0.96, 0.99] },
+  // Carbon. The old carbon-planet idea, and the colour of a burnt-out surface.
+  graphite: { low: [0.05, 0.05, 0.06], mid: [0.11, 0.11, 0.12], high: [0.27, 0.26, 0.28] },
+  // Feldspar highlands: the pale pink-grey of the lunar far side.
+  granite: { low: [0.29, 0.23, 0.22], mid: [0.48, 0.41, 0.39], high: [0.74, 0.68, 0.63] },
+  // Evaporite flats, left where a sea has gone.
+  saline: { low: [0.41, 0.39, 0.34], mid: [0.64, 0.62, 0.56], high: [0.9, 0.89, 0.84] },
 };
+
+/** Weighted draw over the mineralogies the conditions allow. */
+function mineralFor({ bulk, temperatureK, volatiles, oceanLevel }, random) {
+  const weights = new Map();
+  const add = (name, weight) => weights.set(name, (weights.get(name) ?? 0) + weight);
+
+  if (bulk === 'ferria') {
+    add('rust', 3);
+    add('basalt', 2);
+    add('granite', 1.2);
+    add('graphite', 0.6);
+  } else if (bulk === 'aquaria') {
+    add('frost', 2.6);
+    add('jade', 1.4);
+    add('saline', 1.2);
+    add('ochre', 0.8);
+  } else {
+    add('basalt', 2);
+    add('ochre', 2.2);
+    add('rust', 1.8);
+    add('granite', 1.4);
+    add('jade', 1);
+  }
+
+  if (temperatureK < 150) {
+    add('frost', 3);
+    add('tholin', volatiles === 'airless' ? 0.6 : 2);
+    add('graphite', 0.5);
+  } else if (temperatureK < 260) {
+    add('frost', 1.2);
+    add('tholin', 0.9);
+    add('saline', 0.6);
+  } else if (temperatureK > 700) {
+    add('graphite', 2.4);
+    add('basalt', 2);
+    add('sulphur', 1.6);
+  } else if (temperatureK > 420) {
+    add('sulphur', 1.6);
+    add('basalt', 1.4);
+    add('rust', 1);
+  }
+  // Life is the one surface colour with a hard precondition: standing water at
+  // a temperature where it stays standing.
+  if (oceanLevel > 0 && temperatureK > 250 && temperatureK < 330) add('verdant', 2.6);
+  if (oceanLevel > 0.3) add('saline', 0.8);
+  if (volatiles === 'airless') {
+    add('basalt', 1.5);
+    add('graphite', 0.7);
+    weights.delete('verdant');
+    weights.delete('tholin');
+  }
+
+  let total = 0;
+  for (const weight of weights.values()) total += weight;
+  let draw = random() * total;
+  for (const [name, weight] of weights) {
+    draw -= weight;
+    if (draw <= 0) return MINERALS[name];
+  }
+  return MINERALS.basalt;
+}
+
+/**
+ * Eight stops from the deepest sea to the highest peak, the same ordering
+ * SpaceEngine's surface palettes use. Anything without an ocean simply never
+ * samples the first stops.
+ */
+function rockPalette({ bulk, temperatureK, volatiles, oceanLevel }, random) {
+  const mineral = mineralFor({ bulk, temperatureK, volatiles, oceanLevel }, random);
+  // One shift for the whole palette, so the stops stay a set rather than
+  // drifting apart into a surface that cannot have formed.
+  const weathering = {
+    hue: (random() - 0.5) * 0.1,
+    saturation: 0.7 + random() * 0.65,
+    value: 0.82 + random() * 0.38,
+  };
+  const low = shift(mineral.low, weathering);
+  const mid = shift(mineral.mid, weathering);
+  const high = shift(mineral.high, weathering);
+
+  // Whatever the sea is made of. Below the water line it can only be methane
+  // and ethane, which are the colour of weak tea over a dark bed, not blue.
+  const hydrocarbon = temperatureK < 200;
+  const sea = hydrocarbon ? [0.05, 0.035, 0.025] : [0.02, 0.05, 0.12];
+  const shelf = hydrocarbon ? [0.12, 0.09, 0.05] : [0.05, 0.14, 0.25];
+
+  return {
+    sea,
+    shelf,
+    beach: mixColour(mid, high, 0.5),
+    desert: mixColour(low, mid, 0.8),
+    lowland: low,
+    upland: mid,
+    rock: mixColour(mid, high, 0.25),
+    snow: mixColour(high, [0.93, 0.95, 0.97], temperatureK < 260 ? 0.7 : 0.45),
+  };
+}
 
 /** Cloud-top and haze colours for the gas families, biased by temperature. */
 function giantPalette(temperatureK, random) {
@@ -268,9 +398,11 @@ export function describePlanet(entry, { starTeff, aAu } = {}) {
   const prefix = massPrefix(bulk, entry.massEarth);
   const gaseous = bulk === 'jupiter' || bulk === 'neptune';
 
-  const palette = gaseous ? giantPalette(temperatureK, random) : PALETTES[bulk] ?? PALETTES.terra;
   const oceanLevel =
     volatiles === 'oceanic' ? 0.62 : volatiles === 'marine' ? 0.42 : volatiles === 'lacustrine' ? 0.2 : 0;
+  const palette = gaseous
+    ? giantPalette(temperatureK, random)
+    : rockPalette({ bulk, temperatureK, volatiles, oceanLevel }, random);
   // Ice reaches down from the poles once it is cold enough for water to freeze
   // on the surface, and covers the planet outright below the nitrogen line.
   const icecapLatitude =
@@ -302,6 +434,26 @@ export function describePlanet(entry, { starTeff, aAu } = {}) {
         * (volatiles === 'airless' ? 1 : oceanLevel > 0 ? 0.12 : 0.4),
     roughness: gaseous ? 0 : 0.08 + random() * 0.1,
     cloudCover: gaseous ? 1 : volatiles === 'airless' ? 0 : 0.18 + random() * 0.37,
+    // How the surface is laid out, which is as unmeasured as its colour. A few
+    // large provinces or many small ones; a crater population sitting on a
+    // coarse lattice or a fine one; sharp young craters or soft filled ones.
+    // Left at one value each, every world of a class comes out with the same
+    // continents in the same places.
+    // The colour of the air seen edge on. Thin clear air over a cool world
+    // scatters blue like Earth's; below the water line the haze is organic and
+    // orange, as Titan's is; a hot thick one is the white-yellow of Venus.
+    hazeTint: shift(
+      temperatureK < 200
+        ? [0.82, 0.55, 0.32]
+        : temperatureK > 420
+          ? [0.95, 0.82, 0.58]
+          : [0.38, 0.58, 1],
+      { hue: (random() - 0.5) * 0.06, saturation: 0.8 + random() * 0.5, value: 0.9 + random() * 0.2 },
+    ),
+    provinceScale: 1.5 + random() * 2.9,
+    craterScale: 0.5 + random() * 1.3,
+    craterDepth: gaseous ? 0 : 0.11 + random() * 0.19,
+    craterOctaves: gaseous ? 0 : 5 + Math.floor(random() * 3),
     // Whichever way the planet ended up, its axis and rotation are unmeasured.
     tiltDeg: random() * 45,
     rotationHours: gaseous ? 8 + random() * 12 : 12 + random() * 60,

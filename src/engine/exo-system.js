@@ -63,11 +63,14 @@ function specFromPlanet(entry, described, hostKey) {
     radiusKm: described.radiusKm,
     rotationHours: described.rotationHours,
     tiltDeg: described.tiltDeg,
-    craterFreq: gaseous ? 80 : 260,
-    craterOctaves: gaseous ? 0 : 6,
-    craterDepth: gaseous ? 0 : 0.2,
+    craterFreq: gaseous ? 80 : Math.round(260 * described.craterScale),
+    craterOctaves: gaseous ? 0 : described.craterOctaves,
+    craterDepth: described.craterDepth,
     craterDensity: described.craterDensity,
     roughness: described.roughness,
+    // How large the surface provinces are: a world of a few continents or one
+    // of many islands.
+    paletteFreq: gaseous ? 2.2 : described.provinceScale,
     photometry: gaseous ? 0.1 : 0.75,
     albedoBoost: gaseous ? 1.15 : 1.25,
     iceLatitude: described.icecapLatitude,
@@ -87,7 +90,7 @@ function specFromPlanet(entry, described, hostKey) {
     cloudCover: gaseous ? 0 : described.cloudCover,
     // Storm cells, not continents: a handful of cycles over the whole sphere
     // gives half a dozen blobs and reads as marbling rather than weather.
-    cloudFreq: 7.0 + (described.radiusEarth > 2 ? 2.5 : 0),
+    cloudFreq: 5.5 + described.provinceScale + (described.radiusEarth > 2 ? 2.5 : 0),
     maxPatches: 1200,
     maxLevel: 13,
     pixelsPerQuad: 6,
@@ -98,7 +101,7 @@ function specFromPlanet(entry, described, hostKey) {
         // Thicker and bluer than it was. From low altitude the band of air over
         // the horizon is most of what makes a world look like somewhere you
         // could stand, and a thin one leaves the ground meeting black sky.
-        : { height: 0.028, density: 1.5, tint: [0.38, 0.58, 1] },
+        : { height: 0.028, density: 1.5, tint: described.hazeTint },
     classLabel: described.label,
     aAu: entry.aAu,
     periodDays: entry.periodDays,
@@ -114,7 +117,7 @@ function specFromMoon(entry, described, parentKey) {
   // Anchoring the largest cell near a fixed fraction of the body instead keeps
   // the basin-to-pit range comparable across sizes, and small bodies get a
   // saturated surface because they have had no resurfacing to erase anything.
-  const craterFreq = clamp(radiusKm * 0.12, 8, 260);
+  const craterFreq = clamp(radiusKm * 0.12 * described.craterScale, 8, 260);
   return {
     key: exoKey(entry.name),
     name: entry.name,
@@ -125,13 +128,16 @@ function specFromMoon(entry, described, parentKey) {
     inclinationDeg: entry.inclinationDeg,
     craterFreq,
     craterOctaves: 7,
-    craterDepth: radiusKm < 200 ? 0.3 : 0.22,
+    // A moon that has been resurfaced keeps shallow filled craters; one that
+    // never was keeps every sharp rim it was given.
+    craterDepth: (radiusKm < 200 ? 0.3 : 0.22) * (0.7 + described.craterDepth * 1.6),
     craterDensity: radiusKm < 200 ? 0.85 : 0.6,
     roughness: radiusKm < 200 ? 0.32 : 0.22,
     photometry: 1,
     albedoBoost: 1.35,
     iceLatitude: described.icecapLatitude,
     palette,
+    paletteFreq: described.provinceScale,
     maxPatches: 1600,
     maxLevel: 14,
     patchResolution: 20,

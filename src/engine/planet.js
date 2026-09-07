@@ -303,6 +303,14 @@ const RELIEF_GLSL = /* glsl */ `
         uVolcanoCoverage < 0.001) return vec4(0.0);
 
     float cellKm = uRadius / uCraterFreq;
+    // Where this body's craters fell. Kept small so the lattice coordinate does
+    // not lose precision at the finest octave, and coprime-ish per axis so two
+    // bodies with nearby seeds do not land on the same shift.
+    vec3 craterSeed = vec3(
+      mod(uSurfaceSeed * 1.37, 91.0),
+      mod(uSurfaceSeed * 2.71, 87.0),
+      mod(uSurfaceSeed * 3.53, 83.0)
+    );
     float octaves = clamp(
       min(uCraterOctaves, craterOctaveLimit(uCraterFreq, pixelAngle * CRATER_DETAIL_MARGIN)), 0.0, 7.0);
 
@@ -334,7 +342,7 @@ const RELIEF_GLSL = /* glsl */ `
       float basinCellKm = uRadius / uBasinFreq;
       t += craterTerrain(
         d, uBasinFreq, 1.0, 0.3, basinCellKm, 0.0,
-        sunDir, wantShadow * uBasinDepth, basinShade, basinMarks
+        sunDir, wantShadow * uBasinDepth, craterSeed * 0.37, basinShade, basinMarks
       ) * (basinCellKm * uBasinDepth);
       shade = basinShade;
       marks = basinMarks;
@@ -348,7 +356,7 @@ const RELIEF_GLSL = /* glsl */ `
       float craterScale = uCraterDepth * CRATER_DEPTH_NORM;
       t += craterTerrain(
         d, uCraterFreq, octaves, uCraterDensity, cellKm, uComplexKm,
-        sunDir, wantShadow * craterScale, craterShade, craterMarks
+        sunDir, wantShadow * craterScale, craterSeed, craterShade, craterMarks
       ) * (cellKm * craterScale);
       // Shadows from every scale compound: a boulder field inside a shadowed
       // crater floor is not lit twice.

@@ -894,6 +894,87 @@ function setRiding(craftKey) {
   return true;
 }
 
+const UP = new Vector3(0, 1, 0);
+const tmpArrivalA = new Vector3();
+const tmpArrivalB = new Vector3();
+const tmpArrivalC = new Vector3();
+
+/** The star lighting a body, whether it is ours or the one its own system has. */
+function lightSourceFor(resolved) {
+  if (exoSystem && (resolved.key.startsWith('exo:') || resolved.key === exoSystem.key)) {
+    return exoSystem.position;
+  }
+  return universe.get('sun')?.position ?? null;
+}
+
+/** Whatever a body goes round, if that is something other than its star. */
+function primaryPositionOf(resolved) {
+  const parent = resolved.spec?.parent;
+  if (!parent || parent === 'sun') return null;
+  const body = universe.get(parent);
+  if (body) return body.position;
+  const planet = exoSystem?.planets.find((item) => item.spec.key === parent);
+  return planet?.world ?? null;
+}
+
+/**
+ * A point on a cone around `axis`, as near `toward` as the cone allows.
+ *
+ * Both arrival rules are this shape: hold an angle to something, and within
+ * that freedom face the light.
+ */
+function onCone(axis, angleRad, toward, out) {
+  const perpendicular = tmpArrivalA.copy(toward ?? UP).addScaledVector(axis, -(toward ?? UP).dot(axis));
+  if (perpendicular.lengthSq() < 1e-12) {
+    perpendicular.set(-axis.y, axis.x, axis.z).addScaledVector(axis, -axis.z);
+    if (perpendicular.lengthSq() < 1e-12) perpendicular.set(0, 1, 0);
+  }
+  perpendicular.normalize();
+  return out
+    .copy(axis)
+    .multiplyScalar(Math.cos(angleRad))
+    .addScaledVector(perpendicular, Math.sin(angleRad))
+    .normalize();
+}
+
+/**
+ * Which side of a body to come in on.
+ *
+ * Two things decide it, and neither was being asked. A world arrived at from
+ * an arbitrary direction is as likely as not to be a dark crescent, which is
+ * why Saturn used to come up three-quarters in shadow. And a moon was arrived
+ * at from directly outboard of its planet — along the line joining them — which
+ * is the one direction that puts the planet exactly behind the moon, where the
+ * moon hides it: you could stand at Titan and never see Saturn.
+ *
+ * So: face the light, and where there is a primary, hold far enough off the
+ * line to it that it clears the target's limb and sits beside it in frame.
+ */
+function arrivalDirection(resolved, distanceRadii, out) {
+  const light = lightSourceFor(resolved);
+  const toLight = light ? tmpArrivalB.subVectors(light, resolved.position) : null;
+  if (toLight && toLight.lengthSq() > 1e-12) toLight.normalize();
+
+  const primary = primaryPositionOf(resolved);
+  if (primary) {
+    const outboard = out.subVectors(resolved.position, primary);
+    if (outboard.lengthSq() < 1e-12) return null;
+    outboard.normalize();
+    // Enough to clear the target's own disc, plus a margin, and never so far
+    // round that the primary leaves the frame.
+    const limb = Math.asin(clamp(1 / Math.max(distanceRadii, 1.05), 0, 1));
+    return onCone(outboard, clamp(limb + 0.16, 0.2, 0.52), toLight, out);
+  }
+
+  if (!toLight) return null;
+  // Nothing to frame it against, so this is only about the light: a gibbous
+  // phase, tipped so the star clears the body's limb and stays in shot.
+  const sideways = tmpArrivalC.crossVectors(UP, toLight);
+  if (sideways.lengthSq() < 1e-12) sideways.set(1, 0, 0);
+  sideways.normalize().multiplyScalar(0.9).addScaledVector(UP, 0.45);
+  return onCone(toLight, 0.56, sideways, out);
+}
+
 function selectTarget(key, { fly = false, duration = 3200 } = {}) {
   if (fly) setViewFromEarth(false);
   // Arriving somewhere new means loading its terrain and textures, and those
@@ -927,7 +1008,6 @@ function selectTarget(key, { fly = false, duration = 3200 } = {}) {
     const parentSpec = resolved.spec?.parent && resolved.spec.parent !== 'sun'
       ? BODY_BY_KEY.get(resolved.spec.parent)
       : null;
-    const parentState = parentSpec ? universe.get(resolved.spec.parent) : null;
     const giantMoon = parentSpec && parentSpec.radiusKm > 20000 && resolved.spec.orbitKm;
     const distanceRadii =
       resolved.kind === 'galaxy' ? 2.4
@@ -965,10 +1045,8 @@ function selectTarget(key, { fly = false, duration = 3200 } = {}) {
       // disk is lifted over the top of the shadow, and that arc is the whole
       // reason the object looks the way it does.
       arriveFrom = blackHoles.get(resolved.key)?.viewDirection(tmpVector) ?? null;
-    } else if (parentState) {
-      arriveFrom = tmpVector.subVectors(resolved.position, parentState.position);
-      if (arriveFrom.lengthSq() < 1e-12) arriveFrom.set(0, 0.2, 1);
-      else arriveFrom.normalize();
+    } else if (resolved.kind === 'body') {
+      arriveFrom = arrivalDirection(resolved, distanceRadii, tmpVector);
     }
     controls.flyTo(key, { distanceRadii, duration, arriveFrom });
   } else {
@@ -1989,7 +2067,15 @@ function frame(now) {
   sun.group.quaternion.copy(sunState.orientation);
   const sunDistance = cam.distanceTo(sunState.position);
   tmpCameraLocal.copy(cam).sub(sunState.position).applyQuaternion(tmpQuaternionInverse(sunState.orientation));
-  sun.update({ cameraLocal: tmpCameraLocal, time: now / 1000, distanceKm: sunDistance });
+  sun.update({
+    cameraLocal: tmpCameraLocal,
+    time: now / 1000,
+    distanceKm: sunDistance,
+    pixelsPerRadian,
+    // Sunlight where the camera is, at the exposure everything else is being
+    // drawn at, which is what decides how a Sun too small to resolve is drawn.
+    brightness: exposureScale / Math.max((sunDistance / 149597870.7) ** 2, 1e-6),
+  });
   considerUpgrade('sun', (SUN.radiusKm / sunDistance) * pixelsPerRadian * 2);
 
   const parentKey = (() => {
@@ -2207,13 +2293,26 @@ function frame(now) {
     exoSystem.place(state.date, cam);
     const hostDist = cam.distanceTo(exoSystem.position);
     tmpCameraLocal.copy(cam).sub(exoSystem.position);
-    exoSystem.star.update({ cameraLocal: tmpCameraLocal, time: now / 1000, distanceKm: hostDist });
-    exoSystem.star.group.visible = (exoSystem.star.radius / hostDist) * pixelsPerRadian * 2 > 0.4;
     // Exposure adapts to the orbit being visited, exactly as it does at home,
     // so a world taking hundreds of Earths' flux reads as a lit planet rather
     // than a white disc.
     const hostLum = exoSystem.luminositySol ?? 1;
     const exoReference = exoReferenceFlux(exoSystem, state.target, hostLum, cam);
+    exoSystem.star.update({
+      cameraLocal: tmpCameraLocal,
+      time: now / 1000,
+      distanceKm: hostDist,
+      pixelsPerRadian,
+      brightness: exoSunIntensity(
+        exoFlux(hostLum, hostDist / 149597870.7),
+        exoReference,
+        state.exposure,
+      ),
+    });
+    // Always drawn. A host star seen from one of its own planets is the one
+    // thing in that sky you cannot be without, and it is a point source out
+    // past a few au, which is exactly where a size threshold would drop it.
+    exoSystem.star.group.visible = true;
     for (const item of exoSystem.planets) {
       const distance = cameraLocalIn(item.world, item.spec.key, tmpCameraLocal).length();
       const apparentPixels = (item.spec.radiusKm / distance) * pixelsPerRadian * 2;
@@ -2289,14 +2388,25 @@ function frame(now) {
     if (mesh && exoSystem?.key !== resolved.key) {
       placeRelative(mesh.group, resolved.position);
       tmpCameraLocal.copy(cam).sub(resolved.position);
-      mesh.update({ cameraLocal: tmpCameraLocal, time: now / 1000, distanceKm: cam.distanceTo(resolved.position) });
+      mesh.update({
+        cameraLocal: tmpCameraLocal,
+        time: now / 1000,
+        distanceKm: cam.distanceTo(resolved.position),
+        pixelsPerRadian,
+      });
     }
   }
 
   for (const hole of blackHoles.values()) {
     placeRelative(hole.group, hole.world);
     tmpCameraLocal.copy(cam).sub(hole.world).applyQuaternion(tmpQuaternionInverse(hole.group.quaternion));
-    hole.update({ cameraLocal: tmpCameraLocal, time: now / 1000, visible: state.showBlackHoles });
+    hole.update({
+      cameraLocal: tmpCameraLocal,
+      time: now / 1000,
+      visible: state.showBlackHoles,
+      pixelsPerRadian,
+      exposure: state.exposure,
+    });
   }
 
   const viewingGalaxy = resolved?.kind === 'galaxy';
@@ -2375,6 +2485,7 @@ window.cosminova = {
   planets,
   renderer,
   universe,
+  sun,
   /** Getter: the resident system is swapped out whenever you visit another one. */
   get exoSystem() {
     return exoSystem;
@@ -2507,6 +2618,11 @@ window.cosminova = {
   setRate(rate) {
     state.timeRate = rate;
     state.playing = rate !== 0;
+  },
+  /** Goes there the way pressing a destination does, framing and all. */
+  travel(key, { duration = 3200 } = {}) {
+    selectTarget(key, { fly: true, duration });
+    return state.target;
   },
   target(key, distanceRadii = 3.2, { yaw, pitch, lookYaw, lookPitch } = {}) {
     selectTarget(key);

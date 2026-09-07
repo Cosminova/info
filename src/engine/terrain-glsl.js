@@ -557,7 +557,7 @@ export const TERRAIN_GLSL = /* glsl */ `
    */
   vec4 craterTerrain(
     vec3 dir, float baseFreq, float octaves, float density, float cellKm, float complexKm,
-    vec3 sunLocal, float shadowScale, out float shade, out vec2 marks
+    vec3 sunLocal, float shadowScale, vec3 seed, out float shade, out vec2 marks
   ) {
     vec4 height = vec4(0.0);
     float freq = baseFreq;
@@ -610,8 +610,13 @@ export const TERRAIN_GLSL = /* glsl */ `
       // and the crater rims came out ringed with hard black steps instead of
       // shaded. Passing the true rim height and fading the result below gives
       // the smooth appearance the fade was written for.
+      // The lattice is shifted per body. Without this every world is struck in
+      // the same places: the cells are hashed off their own coordinates, so two
+      // planets sharing a crater frequency share their whole crater population,
+      // which is the single most recognisable way two procedural surfaces give
+      // themselves away as the same surface.
       vec4 layer = craterOctave(
-        dir * freq, density, complexity,
+        dir * freq + seed, density, complexity,
         dir, sunTangent, tanElevation,
         contrastFade > 0.0 ? wantShade : 0.0, octaveShade, octaveMarks
       );

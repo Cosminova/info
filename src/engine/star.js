@@ -156,6 +156,35 @@ const CORONA_FRAGMENT = /* glsl */ `
   }
 `;
 
+const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
+
+/**
+ * How a light source too small to resolve is drawn.
+ *
+ * Past a certain distance a star stops being a disc and becomes a point, and
+ * the two want drawing quite differently. A disc has its light spread over its
+ * own angular size; a point has the same light concentrated into whatever the
+ * eye or the optic spreads it into, which is why the Sun is blinding from
+ * Saturn even though it is a twentieth of a pixel across there.
+ *
+ * So size comes from brightness rather than from geometry, and only
+ * logarithmically, the way a bright star's image spreads on a plate: a hot
+ * giant reads brighter than a red dwarf without becoming a dinner plate.
+ *
+ * @param brightness the light arriving at the camera, at the exposure the rest
+ *   of the frame is drawn at. 1 is full sunlight at Earth.
+ */
+export function pointGlare(brightness) {
+  const light = clamp(brightness, 0.03, 6);
+  return {
+    pixels: clamp(5 + 4.5 * Math.log10(1 + light * 9), 4.5, 26),
+    // Enough to clip at the core. A star that does not saturate the few pixels
+    // it covers does not read as a star; it reads as a grey smudge, which is
+    // what the Sun looked like from Saturn.
+    intensity: 4.2 * clamp(light, 0.7, 2.4),
+  };
+}
+
 export class Star {
   constructor({ radiusKm, colour = [1.0, 0.94, 0.86], intensity = 2.8 }) {
     this.radius = radiusKm;
@@ -179,10 +208,11 @@ export class Star {
     this.mesh.frustumCulled = false;
     this.group.add(this.mesh);
 
+    this.baseCorona = intensity * 0.22;
     this.coronaMaterial = new ShaderMaterial({
       uniforms: {
         uColour: { value: new Color(...colour) },
-        uIntensity: { value: intensity * 0.22 },
+        uIntensity: { value: this.baseCorona },
         uScale: { value: radiusKm * 3 },
         uDiscFraction: { value: 1 / 3 },
       },
@@ -203,14 +233,42 @@ export class Star {
     this.material.uniforms.uHasMap.value = texture ? 1 : 0;
   }
 
-  update({ cameraLocal, time, distanceKm }) {
+  /**
+   * @param pixelsPerRadian screen scale, so the star can tell whether its disc
+   *   is resolved; 0 leaves it drawn as a disc at any size.
+   * @param brightness this star's light where the camera is, at the exposure
+   *   the rest of the frame is being drawn at. 1 is full sunlight at Earth.
+   */
+  update({ cameraLocal, time, distanceKm, pixelsPerRadian = 0, brightness = 1 }) {
     this.material.uniforms.uCameraLocal.value.copy(cameraLocal);
     this.material.uniforms.uTime.value = time;
     // The corona is sized in world units, so it has to grow with distance to
     // hold a constant angular size; capped so it never swallows the disc when
     // you are close.
-    const scale = Math.max(this.radius * 1.6, Math.min(distanceKm * 0.06, this.radius * 40));
+    const discScale = Math.max(this.radius * 1.6, Math.min(distanceKm * 0.06, this.radius * 40));
+    const discPixels = pixelsPerRadian ? (this.radius / distanceKm) * pixelsPerRadian * 2 : Infinity;
+
+    /*
+     * Sizing the glow off the star's own geometry, which is all this did, makes
+     * its light shrink away with the disc: the Sun came out a grey speck from
+     * Earth and nothing at all from Saturn, and every host star went the same
+     * way seen from its own planets. Once unresolved it is drawn from the light
+     * arriving instead. For the Sun the distance cancels, which is right — it
+     * is the same blazing point from every planet, because the camera is opened
+     * up for the fainter sunlight out there.
+     */
+    const glare = pointGlare(brightness);
+    const glareScale = pixelsPerRadian
+      ? (glare.pixels * distanceKm) / (2 * pixelsPerRadian)
+      : discScale;
+
+    // Crossed over between about three and eight pixels of disc, so the change
+    // of treatment is not a pop as you approach.
+    const point = 1 - clamp((discPixels - 3) / 5, 0, 1);
+    const scale = discScale + (glareScale - discScale) * point;
     this.coronaMaterial.uniforms.uScale.value = scale;
-    this.coronaMaterial.uniforms.uDiscFraction.value = this.radius / scale;
+    this.coronaMaterial.uniforms.uDiscFraction.value = clamp(this.radius / scale, 0.004, 0.9);
+    this.coronaMaterial.uniforms.uIntensity.value =
+      this.baseCorona + (glare.intensity - this.baseCorona) * point;
   }
 }
