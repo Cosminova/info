@@ -56,13 +56,15 @@
           It is public, and it goes straight to the developer rather than a queue.
         </p>
         <p>
-          What makes a report answerable: your macOS version and Mac model, what you were looking at
+          What makes a report answerable: your macOS or iOS version and device model, what you were looking at
           when it happened, and whether it happens every time. If the picture is wrong rather than
           missing, a screenshot settles in one second what a paragraph cannot.
         </p>
       </div>
 
       <h2>What it needs to run</h2>
+      
+      <h3>macOS</h3>
       <ul>
         <li><strong>macOS 13 or later</strong>, on Apple silicon or Intel.</li>
         <li>
@@ -72,6 +74,22 @@
         </li>
         <li>
           <strong>About 165 MB of disk.</strong> The catalogues, imagery and elevation data ship
+          inside the app, which is most of that figure.
+        </li>
+        <li>
+          <strong>No internet connection.</strong> Nothing is streamed and nothing is fetched at
+          runtime. There is also nothing to sign in to.
+        </li>
+      </ul>
+
+      <h3>iOS</h3>
+      <ul>
+        <li><strong>iOS 16 or later</strong>, on any iPhone or iPad.</li>
+        <li>
+          <strong>A GPU that supports Metal.</strong> Every device that runs iOS 16 has one.
+        </li>
+        <li>
+          <strong>About 500 MB of disk.</strong> The catalogues, imagery and elevation data ship
           inside the app, which is most of that figure.
         </li>
         <li>
@@ -107,8 +125,12 @@
       <div class="faq">
         <h3>How do I turn the music off?</h3>
         <p>
-          Menu bar → <strong>Interface</strong> → <strong>Music</strong>, or <kbd>F12</kbd>. In the
+          <strong>macOS:</strong> Menu bar → <strong>Interface</strong> → <strong>Music</strong>, or <kbd>F12</kbd>. In the
           app itself it is in the Display panel (<kbd>F9</kbd>) under <strong>Effects</strong>. The
+          setting is remembered, so it stays off next time.
+        </p>
+        <p>
+          <strong>iOS:</strong> Tap the <strong>Interface</strong> panel, then toggle <strong>Music</strong> under <strong>Effects</strong>. The
           setting is remembered, so it stays off next time.
         </p>
       </div>
@@ -116,7 +138,7 @@
       <div class="faq">
         <h3>How do I move around?</h3>
         <p>
-          <strong>Drag</strong> to swing the view around whatever you have arrived at, and
+          <strong>macOS:</strong> <strong>Drag</strong> to swing the view around whatever you have arrived at, and
           <strong>scroll</strong> to close in — all the way down to standing on the surface. Pick
           somewhere to go from the Navigation panel (<kbd>F4</kbd>), or search for it with
           <kbd>F2</kbd>.
@@ -128,12 +150,18 @@
           lets you move through open space with nothing to orbit and nowhere you cannot go.
         </p>
         <p>Press <kbd>F1</kbd> at any point for the full list of controls.</p>
+        <p>
+          <strong>iOS:</strong> <strong>Drag</strong> to swing the view around whatever you have arrived at, and
+          <strong>pinch</strong> to close in — all the way down to standing on the surface. Pick
+          somewhere to go from the Navigation panel, or search for it with the search button.
+          Tap and hold on any body to rotate around it, or swipe to explore in Roam mode.
+        </p>
       </div>
 
       <div class="faq">
         <h3>The window is black, or the frame rate is poor</h3>
         <p>
-          A black window that never fills in means the GPU could not give the app a WebGL2 context.
+          <strong>macOS:</strong> A black window that never fills in means the GPU could not give the app a WebGL2 context.
           Restarting the app is worth trying first, since a context can be lost when a Mac wakes
           from sleep.
         </p>
@@ -142,6 +170,12 @@
           are in the Display panel (<kbd>F9</kbd>) — turn <strong>Bloom</strong> off under Effects,
           and lower the label density. A smaller window helps more than either, because the cost is
           per pixel.
+        </p>
+        <p>
+          <strong>iOS:</strong> A black screen that never fills in means the GPU could not initialize. Try restarting the app.
+          For frame rate: the scene is doing real work. In the Display panel, turn <strong>Bloom</strong> off
+          under Effects, and lower the label density. Using the app on iPad rather than iPhone, or in
+          landscape orientation, can improve performance.
         </p>
       </div>
 
