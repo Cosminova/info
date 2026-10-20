@@ -44,7 +44,11 @@ jobs:
         env:
           CHROME_PATH: /usr/bin/google-chrome
           CHROME_ARGS: --use-angle=swiftshader --enable-unsafe-swiftshader
-        run: node scripts/render-video.mjs ${{ matrix.shot }} ${{ inputs.flags }}
+        run: |
+          # The first load makes vite optimise dependencies and reload the page
+          # mid-render; a throwaway pass gets that out of the way.
+          node scripts/render-video.mjs ${{ matrix.shot }} --preview --fps 0.02 || true
+          node scripts/render-video.mjs ${{ matrix.shot }} ${{ inputs.flags }}
       - uses: actions/upload-artifact@v4
         if: always()
         with:
