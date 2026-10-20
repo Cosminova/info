@@ -133,7 +133,7 @@ export const BODIES = [
     // stand in for it: the shape of the glow — a pale blue lobe hugging the sun,
     // the opposite way round from Earth — comes out of the scattering either
     // way, and only its brightness is being made up.
-    atmosphere: { height: 0.008, density: 0.5, tint: [0.85, 0.62, 0.45], skyBrightness: 9 },
+    atmosphere: { height: 0.008, density: 0.5, tint: [0.85, 0.62, 0.45], skyBrightness: 9, mieTint: [0.35, 0.62, 1.25], mieG: 0.86 },
   },
   {
     key: 'jupiter',

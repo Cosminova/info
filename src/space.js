@@ -4178,8 +4178,10 @@ window.cosminova = {
     }
     selectTarget(key);
     universe.update(state.date);
-    const body = universe.get(key).position;
-    const toSun = new Vector3().subVectors(universe.get('sun').position, body).normalize();
+    const home = universe.get(key);
+    const body = home ? home.position : resolveWorld(key).position;
+    const star = home ? universe.get('sun').position : exoSystem.position;
+    const toSun = new Vector3().subVectors(star, body).normalize();
     const axis = new Vector3(0, 1, 0);
     const direction = toSun
       .clone()

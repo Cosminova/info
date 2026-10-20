@@ -1,0 +1,56 @@
+name: Render videos
+
+on:
+  workflow_dispatch:
+    inputs:
+      shots:
+        description: Shot names, comma separated (e.g. moon-swap,short-drift)
+        required: true
+        default: moon-swap
+      flags:
+        description: Extra render flags (e.g. --landscape, --preview)
+        required: false
+        default: --landscape
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      shots: ${{ steps.split.outputs.shots }}
+    steps:
+      - id: split
+        run: echo "shots=$(echo '${{ inputs.shots }}' | jq -Rc 'split(",") | map(gsub("^ +| +$"; ""))')" >> "$GITHUB_OUTPUT"
+
+  render:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ${{ fromJson(needs.plan.outputs.shots) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Start dev server
+        run: |
+          npx vite --port 5179 --host 127.0.0.1 > vite.log 2>&1 &
+          for i in $(seq 1 120); do curl -s -o /dev/null http://127.0.0.1:5179/ && break; sleep 1; done
+      - name: Render
+        env:
+          CHROME_PATH: /usr/bin/google-chrome
+          CHROME_ARGS: --use-angle=swiftshader --enable-unsafe-swiftshader
+        run: node scripts/render-video.mjs ${{ matrix.shot }} ${{ inputs.flags }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.shot }}
+          path: |
+            video/*.mp4
+            video/*.srt
+            vite.log
+          if-no-files-found: warn

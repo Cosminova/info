@@ -1652,6 +1652,9 @@ const SKY_INSCATTER_FRAGMENT = /* glsl */ `
   uniform vec3 uSunColour;
   uniform float uSunIntensity;
   uniform float uBrightness;
+  // Aerosol colour. Earth's haze is grey; Mars's dust grains are the size that
+  // throws blue light forward, which is why its sunsets are blue.
+  uniform vec3 uMieTint;
 
   void main() {
     #include <logdepthbuf_fragment>
@@ -1704,7 +1707,7 @@ const SKY_INSCATTER_FRAGMENT = /* glsl */ `
     // and evenly blue rather than a dim tint. Isotropic, and weighted the same
     // as the single-scattered Rayleigh light it came from.
     vec3 multiple = sumR * uRayleigh * 0.16;
-    vec3 colour = (sumR * uRayleigh * phaseR + sumM * uMie * phaseM + multiple)
+    vec3 colour = (sumR * uRayleigh * phaseR + sumM * uMie * phaseM * uMieTint + multiple)
       * uSunColour * min(uSunIntensity, 2.4) * uBrightness;
     if (uOvercast > 0.0) {
       // Light diffused through the deck: brightest under the hidden sun, dimming
@@ -2168,6 +2171,7 @@ export class Planet {
         // part of a sunset horizon just under clipping and leaves the rest of
         // the sky in range beneath it.
         uBrightness: { value: air.skyBrightness ?? 5 },
+        uMieTint: { value: new Color(...(air.mieTint ?? [1, 1, 1])) },
       },
       vertexShader: SKY_VERTEX,
       fragmentShader: SKY_INSCATTER_FRAGMENT,

@@ -443,6 +443,400 @@ SHOTS.alien = {
   ],
 };
 
+// ---------------------------------------------------------------------------
+// Shorts: hook, demonstration, payoff, invitation. Short lines, readable muted.
+// ---------------------------------------------------------------------------
+
+const END_CAPTION = 'Explore it in Cosminova\nLink in description';
+/** Hold wherever the previous beat ended, with the invitation over it. */
+const endCard = (seconds = 3.5) => ({
+  name: 'end',
+  seconds,
+  caption: END_CAPTION,
+  frame: (t, ctx) => ctx.last(1 + t * 0.04),
+});
+
+/** A slow turn round a body, framed from the lit side. */
+const orbitBeat = (name, key, caption, { seconds = 5, distance = 2.6, phase = 40, tilt = 12, turn = 0.35, wait = false } = {}) => ({
+  name,
+  seconds,
+  caption,
+  async setup(page, ctx) {
+    if (wait) {
+      await page.evaluate((k) => window.cosminova.target(k), key);
+      await page.waitForFunction((k) => Boolean(window.cosminova.planets.get(k.replace(/^exo:/, '')) || window.cosminova.exoSystem?.planets?.some((p) => p.spec.key === k)), { timeout: 90000 }, key);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    ctx.base = await page.evaluate((k, d, p, tl) => {
+      const sv = window.cosminova;
+      sv.lookFromSun(k, d, p, tl);
+      return { yaw: sv.controls.yaw, pitch: sv.controls.pitch };
+    }, key, distance, phase, tilt);
+    const base = ctx.base;
+    ctx.last = (s) => ({ distanceRadii: distance * 0.9 / s, yaw: base.yaw + turn, pitch: base.pitch, fov: 40 });
+  },
+  frame: (t, ctx) => ({ distanceRadii: distance * (1 - 0.1 * t), yaw: ctx.base.yaw + turn * t, pitch: ctx.base.pitch, fov: 40 }),
+});
+
+SHOTS['short-earth-moon'] = {
+  date: '2026-10-05T12:00:00.000Z',
+  views: { distantMarkers: true },
+  labels: { earth: 'Earth', moon: 'Moon' },
+  beats: [
+    {
+      name: 'hook',
+      seconds: 3,
+      caption: 'This is the real distance\nbetween Earth and the Moon.',
+      async setup(page, ctx) {
+        ctx.base = await page.evaluate(async () => {
+          const sv = window.cosminova;
+          sv.target('earth', 120);
+          const c = sv.controls;
+          const frame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          const where = (key) => {
+            const v = new sv.camera.position.constructor();
+            sv.planets.get(key).group.getWorldPosition(v);
+            return v.project(sv.camera);
+          };
+          let best = null;
+          for (let yi = 0; yi < 24; yi++) {
+            for (const pitch of [-0.5, -0.25, 0, 0.25, 0.5]) {
+              c.stopFlight();
+              c.fov = 70; c.distanceRadii = 120; c.yaw = (yi / 24) * Math.PI * 2; c.pitch = pitch;
+              c.lookYaw = 0; c.lookPitch = 0;
+              await frame();
+              const m = where('moon');
+              if (m.z > 1 || Math.abs(m.x) > 0.75 || Math.abs(m.y) > 0.62) continue;
+              // Lit side towards us: the camera on the Sun's side of the pair.
+              const sun = sv.universe.get('sun').position;
+              const e = sv.universe.get('earth').position;
+              const toSun = [sun.x - e.x, sun.y - e.y, sun.z - e.z];
+              const cam = c.worldPosition;
+              const toCam = [cam.x - e.x, cam.y - e.y, cam.z - e.z];
+              const lit = (toSun[0] * toCam[0] + toSun[1] * toCam[1] + toSun[2] * toCam[2])
+                / Math.hypot(...toSun) / Math.hypot(...toCam);
+              const score = Math.hypot(m.x, m.y * 1.6) + lit * 0.8;
+              if (!best || score > best.score) best = { score, yaw: c.yaw, pitch };
+            }
+          }
+          return best ?? { yaw: c.yaw, pitch: c.pitch };
+        });
+        ctx.last = () => ({ distanceRadii: 120, yaw: ctx.base.yaw, pitch: ctx.base.pitch, fov: 70 });
+        ctx.lookYaw = 0;
+      },
+      frame: (t, ctx) => ({ distanceRadii: glide(3, 6, t), yaw: ctx.base.yaw, pitch: ctx.base.pitch, fov: 40 }),
+    },
+    {
+      name: 'pull',
+      seconds: 9,
+      ease: arrive,
+      caption: 'About 30 Earths\nfit in the gap.',
+      frame: (t, ctx) => {
+        return { distanceRadii: glide(6, 120, t), yaw: ctx.base.yaw, pitch: ctx.base.pitch, fov: lerp(40, 70, t) };
+      },
+    },
+    {
+      name: 'payoff',
+      seconds: 6,
+      caption: '384,400 km.\nMost diagrams hide this gap.',
+      frame: (t, ctx) => ctx.last(),
+    },
+    endCard(),
+  ],
+};
+
+const stand = (body, sun, alt, view) => ({ stand: { body, sunElevationDeg: sun, altitudeKm: alt, viewElevationDeg: view, fov: 62 } });
+SHOTS['short-mars-sunset'] = {
+  date: '2026-06-21T17:00:00.000Z',
+  beats: [
+    {
+      name: 'earth',
+      seconds: 5,
+      caption: 'On Earth, sunsets are red.',
+      async setup(page) {
+        await page.evaluate(() => window.cosminova.standAt('earth', { sunElevationDeg: 4, altitudeKm: 2.5, viewElevationDeg: 9 }));
+        await page.evaluate(() => window.cosminova.loadDetail('earth'));
+      },
+      frame: (t) => stand('earth', lerp(4, 0.6, t), 2.5, 9),
+    },
+    {
+      name: 'mars',
+      seconds: 7,
+      caption: 'On Mars, they turn blue.',
+      async setup(page) {
+        await page.evaluate(() => window.cosminova.standAt('mars', { sunElevationDeg: 5, altitudeKm: 4, viewElevationDeg: 8 }));
+        await page.evaluate(() => window.cosminova.loadDetail('mars'));
+      },
+      frame: (t) => stand('mars', lerp(5, 2, t), 4, 8),
+    },
+    {
+      name: 'why',
+      seconds: 7,
+      caption: 'Fine dust scatters blue light\nforward, around the Sun.',
+      frame: (t) => stand('mars', lerp(2, 0.6, t), 4, 8),
+    },
+    { ...endCard(), frame: () => stand('mars', 0.6, 4, 8) },
+  ],
+};
+
+/**
+ * Each body in turn hung where the Moon is, 384,400 km up, over a night
+ * horizon. It is set opposite the Sun rather than where the Moon really is, so
+ * it is fully lit and the standing point keeps the horizon level; the Moon goes
+ * to wherever the body was.
+ */
+const MOON_KM = 384400;
+const ELEV = 24;
+const SWAP_STAND = { sunElevationDeg: -24, altitudeKm: 0.4, azimuthDeg: 180, viewElevationDeg: 20, fov: 62 };
+/**
+ * A night foreground drawn over the horizon: a hill line, pines, a broadleaf
+ * tree and a house with a lit window. The ground the engine draws at this scale
+ * is a flat black band, and a silhouette against the sky is what a real night
+ * photograph of a rising moon looks like anyway. Kept to the middle third where
+ * it matters so a 9:16 crop from the centre still has the house and a tree.
+ */
+function foregroundSvg(horizon) {
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  const W = 1920, H = 1080, y0 = horizon * H;
+  const pine = (x, h, w) => {
+    const base = y0 + 18 + rnd() * 14;
+    const pts = [[x, base - h]];
+    const tiers = 9;
+    for (let i = 1; i <= tiers; i++) {
+      const y = base - h + (h * 0.92 * i) / tiers;
+      const half = (w / 2) * (i / tiers) * (0.8 + rnd() * 0.4);
+      pts.push([x + half, y], [x + half * 0.45, y - 4]);
+    }
+    const right = pts.slice(1);
+    const left = right.map(([px, py]) => [2 * x - px + (rnd() - 0.5) * 3, py]).reverse();
+    const poly = [pts[0], ...right, [x + 3, base], [x - 3, base], ...left];
+    return `<polygon points="${poly.map((p) => p.map((n) => n.toFixed(1)).join(',')).join(' ')}"/>`;
+  };
+  const blobTree = (x, h, r) => {
+    const base = y0 + 30;
+    let s = `<rect x="${x - 6}" y="${base - h * 0.55}" width="12" height="${h * 0.55}"/>`;
+    for (let i = 0; i < 26; i++) {
+      const a = rnd() * Math.PI * 2, d = rnd() * r * 0.75;
+      s += `<circle cx="${(x + Math.cos(a) * d * 1.2).toFixed(1)}" cy="${(base - h * 0.62 + Math.sin(a) * d * 0.8).toFixed(1)}" r="${(r * (0.32 + rnd() * 0.3)).toFixed(1)}"/>`;
+    }
+    return s;
+  };
+  let hill = `M0 ${H} L0 ${y0 + 34}`;
+  for (let x = 0; x <= W; x += 40) {
+    hill += ` L${x} ${(y0 + 26 + Math.sin(x / 260) * 9 + Math.sin(x / 71) * 3).toFixed(1)}`;
+  }
+  hill += ` L${W} ${H} Z`;
+  let trees = '';
+  for (const [x, h] of [[90, 210], [160, 160], [230, 250], [300, 180], [1540, 190], [1610, 260], [1690, 170], [1770, 230], [1850, 200]]) {
+    trees += pine(x, h, h * 0.42);
+  }
+  trees += pine(1110, 230, 92) + pine(1160, 175, 74) + pine(700, 150, 62);
+  trees += blobTree(1265, 250, 70);
+  const hx = 790, hy = y0 + 30;
+  const house = `
+    <rect x="${hx}" y="${hy - 70}" width="150" height="70"/>
+    <polygon points="${hx - 14},${hy - 68} ${hx + 75},${hy - 128} ${hx + 164},${hy - 68}"/>
+    <rect x="${hx + 112}" y="${hy - 128}" width="16" height="40"/>
+    <rect x="${hx + 22}" y="${hy - 52}" width="26" height="22" fill="#ffbf6a" filter="url(#glow)"/>
+    <rect x="${hx + 98}" y="${hy - 52}" width="26" height="22" fill="#f4a750" filter="url(#glow)"/>
+    <rect x="${hx + 64}" y="${hy - 42}" width="20" height="42" fill="#0a0806"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMax slice"
+      style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:9000">
+    <defs>
+      <linearGradient id="haze" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0" stop-color="#1b2433" stop-opacity="0"/>
+        <stop offset="1" stop-color="#2a3448" stop-opacity="0.55"/>
+      </linearGradient>
+      <filter id="glow" x="-200%" y="-200%" width="500%" height="500%">
+        <feGaussianBlur stdDeviation="6" result="b"/>
+        <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+      </filter>
+    </defs>
+    <rect x="0" y="${y0 - 120}" width="${W}" height="160" fill="url(#haze)"/>
+    <g fill="#030406">${trees}${house}<path d="${hill}"/></g>
+  </svg>`;
+}
+
+async function nightScene(page, horizon) {
+  await page.evaluate((svg) => {
+    const sv = window.cosminova;
+    sv.setView('galaxies', false);
+    sv.setView('blackHoles', false);
+    sv.scene.traverse((o) => {
+      const u = o.material?.uniforms;
+      if (u && (u.uCavity || u.uBipolar)) {
+        Object.defineProperty(o, 'visible', { get: () => false, set() {}, configurable: true });
+      }
+    });
+    if (!document.getElementById('__fg')) {
+      const host = document.createElement('div');
+      host.id = '__fg';
+      host.innerHTML = svg;
+      document.body.append(host);
+    }
+  }, foregroundSvg(horizon));
+}
+
+function swapBeat(key, seconds, fov = [62, 62]) {
+  return {
+    name: key,
+    seconds,
+    async setup(page, ctx) {
+      await nightScene(page, 0.78);
+      ctx.look = await page.evaluate((key, stand, elev, km) => {
+        const sv = window.cosminova;
+        const u = sv.universe;
+        if (!u.__swapped) {
+          const orig = u.update.bind(u);
+          u.update = (d) => {
+            orig(d);
+            const s = u.__swap;
+            if (!s) return;
+            const earth = u.get('earth').position;
+            const body = u.get(s.key).position;
+            if (s.key !== 'moon') u.get('moon').position.set(0, 6e9, 0);
+            body.copy(earth).add(s.offset);
+          };
+          u.__swapped = true;
+        }
+        u.__swap = null;
+        sv.target(key, 3.2);
+        u.update(sv.state.date);
+        sv.standAt('earth', stand);
+        const c = sv.controls;
+        const V = sv.camera.position.constructor;
+        const dir = new V(Math.sin(c.yaw) * Math.cos(c.pitch), Math.sin(c.pitch), Math.cos(c.yaw) * Math.cos(c.pitch));
+        const earth = u.get('earth').position;
+        const eye = earth.clone().addScaledVector(dir, c.distanceRadii * 6371);
+        const toSun = u.get('sun').position.clone().sub(eye).normalize();
+        const away = toSun.addScaledVector(dir, -toSun.dot(dir)).normalize().negate();
+        const e = (elev * Math.PI) / 180;
+        const want = away.multiplyScalar(Math.cos(e)).addScaledVector(dir, Math.sin(e));
+        u.__swap = { key, offset: eye.clone().addScaledVector(want, km).sub(earth) };
+        u.update(sv.state.date);
+        return { lookYaw: c.lookYaw, lookPitch: c.lookPitch };
+      }, key, SWAP_STAND, ELEV, MOON_KM);
+    },
+    frame: (t, ctx) => ({ fov: glide(fov[0], fov[1], t), ...ctx.look }),
+  };
+}
+SHOTS['moon-swap'] = {
+  date: '2026-11-10T06:00:00.000Z',
+  views: { distantMarkers: false },
+  beats: [
+    swapBeat('moon', 6),
+    swapBeat('mars', 5),
+    swapBeat('venus', 5),
+    swapBeat('neptune', 5),
+    swapBeat('uranus', 5),
+    swapBeat('jupiter', 7),
+    swapBeat('saturn', 9),
+  ],
+};
+
+SHOTS['short-megaparsecs'] = {
+  date: '2026-10-05T12:00:00.000Z',
+  beats: [
+    {
+      name: 'galaxy',
+      seconds: 5,
+      caption: 'Fornax A.\n60 million light-years away.',
+      async setup(page, ctx) {
+        ctx.base = await page.evaluate(() => {
+          const sv = window.cosminova;
+          sv.target('gal:NGC 1316', 3);
+          return { yaw: sv.controls.yaw, pitch: sv.controls.pitch };
+        });
+      },
+      frame: (t, ctx) => ({ distanceRadii: glide(3.2, 2.2, t), yaw: ctx.base.yaw + 0.3 * t, pitch: ctx.base.pitch, fov: 45 }),
+    },
+    orbitBeat('planet', 'exo:fornax-a-eta-b', 'At this distance, even 64-bit\nnumbers are 65,000 km apart.', { seconds: 7, distance: 6, wait: true }),
+    {
+      name: 'jitter',
+      seconds: 6,
+      caption: 'A planet would shake\non that grid.',
+      frame: (t, ctx) => ({ distanceRadii: 5.4 * (1 - 0.05 * t), yaw: ctx.base.yaw + 0.35 + 0.15 * t, pitch: ctx.base.pitch, fov: 40 }),
+    },
+    {
+      name: 'fix',
+      seconds: 6,
+      caption: 'So Cosminova measures\nfrom the camera instead.',
+      frame: (t, ctx) => ({ distanceRadii: 5.13 * (1 - 0.05 * t), yaw: ctx.base.yaw + 0.5 + 0.15 * t, pitch: ctx.base.pitch, fov: 40 }),
+    },
+    { ...endCard(), frame: (t, ctx) => ({ distanceRadii: 4.9, yaw: ctx.base.yaw + 0.65 + 0.05 * t, pitch: ctx.base.pitch, fov: 40 }) },
+  ],
+};
+
+SHOTS['short-points-of-light'] = {
+  date: '2026-10-05T12:00:00.000Z',
+  beats: [
+    {
+      name: 'dot',
+      seconds: 4,
+      caption: 'That bright dot is Sirius.',
+      async setup(page, ctx) {
+        ctx.base = await page.evaluate(() => {
+          const sv = window.cosminova;
+          sv.target('star:Sirius', 6e7);
+          return { yaw: sv.controls.yaw, pitch: sv.controls.pitch };
+        });
+      },
+      frame: (t, ctx) => ({ distanceRadii: glide(6.8e7, 4e7, t), yaw: ctx.base.yaw, pitch: ctx.base.pitch, fov: 50 }),
+    },
+    {
+      name: 'fly',
+      seconds: 9,
+      ease: arrive,
+      caption: '8.6 light-years away.\nLet\u2019s go.',
+      frame: (t, ctx) => ({ distanceRadii: glide(4e7, 9, t), yaw: ctx.base.yaw + 0.25 * t, pitch: ctx.base.pitch, fov: 50 }),
+    },
+    {
+      name: 'payoff',
+      seconds: 6,
+      caption: 'Every point of light\nis somewhere you can visit.',
+      frame: (t, ctx) => ({ distanceRadii: glide(9, 7, t), yaw: ctx.base.yaw + 0.25 + 0.1 * t, pitch: ctx.base.pitch, fov: 50 }),
+    },
+    { ...endCard(), frame: (t, ctx) => ({ distanceRadii: 7, yaw: ctx.base.yaw + 0.35 + 0.05 * t, pitch: ctx.base.pitch, fov: 50 }) },
+  ],
+};
+
+SHOTS['short-real-modeled'] = {
+  date: '2026-10-05T12:00:00.000Z',
+  beats: [
+    orbitBeat('real', 'moon', 'REAL\nMoon terrain, measured from orbit.', { seconds: 6, distance: 5.5, phase: 55, tilt: 14 }),
+    orbitBeat('modeled', 'venus', 'MODELED\nVenus\u2019s clouds, from physics.', { seconds: 6, distance: 6 }),
+    orbitBeat('generated', 'exo:trappist-1-e', 'GENERATED\nTRAPPIST-1 e. Real size, invented ground.', { seconds: 7, distance: 6, wait: true }),
+    {
+      name: 'honest',
+      seconds: 4,
+      caption: 'Every object says\nwhich one it is.',
+      frame: (t, ctx) => ctx.last(1 + t * 0.05),
+    },
+    endCard(),
+  ],
+};
+
+SHOTS['short-drift'] = {
+  date: '2026-10-05T12:00:00.000Z',
+  beats: [
+    orbitBeat('saturn', 'saturn', 'What deep space\nsounds like.', { seconds: 6, distance: 6.5, phase: 35, tilt: 14, turn: 0.4 }),
+    {
+      name: 'listen',
+      seconds: 9,
+      caption: '',
+      frame: (t, ctx) => ({ distanceRadii: 5.85 * (1 - 0.08 * t), yaw: ctx.base.yaw + 0.4 + 0.5 * t, pitch: ctx.base.pitch, fov: 40 }),
+    },
+    {
+      name: 'live',
+      seconds: 6,
+      caption: 'The music is generated\nlive, as you fly.',
+      frame: (t, ctx) => ({ distanceRadii: 5.4 * (1 - 0.05 * t), yaw: ctx.base.yaw + 0.9 + 0.3 * t, pitch: ctx.base.pitch, fov: 40 }),
+    },
+    { ...endCard(4), frame: (t, ctx) => ({ distanceRadii: 5.13, yaw: ctx.base.yaw + 1.2 + 0.2 * t, pitch: ctx.base.pitch, fov: 40 }) },
+  ],
+};
+
 const shot = SHOTS[SHOT_NAME];
 if (!shot) {
   console.error(`no shot called "${SHOT_NAME}". known: ${Object.keys(SHOTS).join(', ')}`);
@@ -460,7 +854,9 @@ fs.mkdirSync(FRAME_DIR, { recursive: true });
 
 const browser = await puppeteer.launch({
   executablePath: CHROME,
-  args: ['--headless=new', '--no-sandbox', '--use-gl=angle', '--hide-scrollbars'],
+  args: ['--headless=new', '--no-sandbox', '--use-gl=angle', '--hide-scrollbars',
+    ...(process.env.CHROME_ARGS ?? '').split(' ').filter(Boolean)],
+  protocolTimeout: 600000,
   defaultViewport: { width: Math.round(WIDTH), height: Math.round(HEIGHT), deviceScaleFactor: 1 },
 });
 const page = await browser.newPage();
@@ -474,7 +870,7 @@ console.log(`rendering "${SHOT_NAME}" — ${totalSeconds}s at ${FPS} fps, `
 await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.cosminova?.ready === true, { timeout: 180000 });
 
-await page.evaluate(({ date, brand, site }) => {
+await page.evaluate(({ date, brand, site, views, labels }) => {
   const sv = window.cosminova;
   sv.setRate(0);
   sv.setDate(date);
@@ -500,7 +896,7 @@ await page.evaluate(({ date, brand, site }) => {
     }
     #__capText {
       font: 700 clamp(26px, 5.4vw, 66px)/1.28 var(--font, 'Inter', system-ui, sans-serif);
-      color: #fff; text-align: center; letter-spacing: -0.01em;
+      color: #fff; text-align: center; letter-spacing: -0.01em; white-space: pre-line;
       text-shadow: 0 3px 24px rgba(0,0,0,0.92), 0 0 6px rgba(0,0,0,0.95);
       opacity: 0; transition: none;
     }
@@ -565,7 +961,29 @@ await page.evaluate(({ date, brand, site }) => {
     c.lookYaw = s.lookYaw ?? 0;
     c.lookPitch = s.lookPitch ?? 0;
   };
-}, { date: shot.date, brand: BRAND, site: SITE });
+  for (const [key, on] of Object.entries(views ?? {})) sv.setView(key, on);
+  // Name tags that follow a body, for shots where it is a few pixels across.
+  const tags = Object.entries(labels ?? {}).map(([key, name]) => {
+    const node = document.createElement('div');
+    node.textContent = name;
+    node.style.cssText = 'position:fixed;z-index:99998;pointer-events:none;color:#fff;'
+      + 'font:600 clamp(16px,3.2vw,38px)/1 var(--font,Inter,system-ui,sans-serif);'
+      + 'text-shadow:0 2px 12px #000;transform:translate(-50%,-180%);opacity:0;';
+    document.body.append(node);
+    return { key, node };
+  });
+  window.__tags = (opacity) => {
+    for (const { key, node } of tags) {
+      const body = sv.planets.get(key);
+      if (!body) continue;
+      const v = new sv.camera.position.constructor();
+      body.group.getWorldPosition(v).project(sv.camera);
+      node.style.left = `${(v.x * 0.5 + 0.5) * innerWidth}px`;
+      node.style.top = `${(-v.y * 0.5 + 0.5) * innerHeight}px`;
+      node.style.opacity = v.z < 1 ? String(opacity) : '0';
+    }
+  };
+}, { date: shot.date, brand: BRAND, site: SITE, views: { orbits: false, ...shot.views }, labels: shot.labels });
 
 /**
  * Hold the frame until the scene has stopped arriving.
@@ -638,6 +1056,9 @@ for (const beat of shot.beats) {
     // camera out in space has nothing left to arrive.
     const onSurface = beat.name === 'descend' || Boolean(state.stand);
     await settle(onSurface ? 220 : 90, onSurface ? 2200 : 900);
+    if (shot.labels) {
+      await page.evaluate(() => window.__tags(Math.min(Math.max((window.cosminova.controls.distanceRadii - 25) / 25, 0), 1)));
+    }
 
     const file = path.join(FRAME_DIR, `f${String(frameIndex).padStart(5, '0')}.png`);
     await page.screenshot({ path: file, type: 'png' });
