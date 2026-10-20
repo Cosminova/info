@@ -1,5 +1,9 @@
 name: Render videos
 
+# Software rendering on a runner is far slower than a GPU, so each shot is cut
+# into slices of frames that render on separate machines at once; every slice
+# encodes its own clip and a last job joins them.
+
 on:
   workflow_dispatch:
     inputs:
@@ -11,15 +15,38 @@ on:
         description: Extra render flags (e.g. --landscape, --preview)
         required: false
         default: --landscape
+      slice:
+        description: Frames per machine
+        required: false
+        default: '40'
 
 jobs:
   plan:
     runs-on: ubuntu-latest
     outputs:
-      shots: ${{ steps.split.outputs.shots }}
+      slices: ${{ steps.plan.outputs.slices }}
+      shots: ${{ steps.plan.outputs.shots }}
     steps:
-      - id: split
-        run: echo "shots=$(echo '${{ inputs.shots }}' | jq -Rc 'split(",") | map(gsub("^ +| +$"; ""))')" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - id: plan
+        run: |
+          slices='[]'; shots='[]'
+          for shot in $(echo '${{ inputs.shots }}' | tr ',' ' '); do
+            total=$(node scripts/render-video.mjs "$shot" ${{ inputs.flags }} --count)
+            shots=$(jq -c --arg s "$shot" '. + [$s]' <<< "$shots")
+            for ((f = 0; f < total; f += ${{ inputs.slice }})); do
+              slices=$(jq -c --arg s "$shot" --argjson a "$f" --argjson b "$((f + ${{ inputs.slice }}))" \
+                '. + [{shot: $s, from: $a, to: $b}]' <<< "$slices")
+            done
+            echo "$shot: $total frames"
+          done
+          echo "slices=$slices" >> "$GITHUB_OUTPUT"
+          echo "shots=$shots" >> "$GITHUB_OUTPUT"
 
   render:
     needs: plan
@@ -28,33 +55,58 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shot: ${{ fromJson(needs.plan.outputs.shots) }}
+        include: ${{ fromJson(needs.plan.outputs.slices) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: npm ci && sudo apt-get install -y -qq ffmpeg > /dev/null
       - name: Start dev server
         run: |
           npx vite --port 5179 --host 127.0.0.1 > vite.log 2>&1 &
           for i in $(seq 1 120); do curl -s -o /dev/null http://127.0.0.1:5179/ && break; sleep 1; done
-      - name: Render
+      - name: Render frames
         env:
           CHROME_PATH: /usr/bin/google-chrome
           CHROME_ARGS: --use-angle=swiftshader --enable-unsafe-swiftshader
+        run: node scripts/render-video.mjs ${{ matrix.shot }} ${{ inputs.flags }} --from ${{ matrix.from }} --to ${{ matrix.to }}
+      - name: Encode slice
         run: |
-          # The first load makes vite optimise dependencies and reload the page
-          # mid-render; a throwaway pass gets that out of the way.
-          node scripts/render-video.mjs ${{ matrix.shot }} --preview --fps 0.02 || true
-          node scripts/render-video.mjs ${{ matrix.shot }} ${{ inputs.flags }}
+          fps=30; case "${{ inputs.flags }}" in *--preview*) fps=12;; esac
+          case "${{ inputs.flags }}" in *"--fps "*) fps=$(echo "${{ inputs.flags }}" | sed -E 's/.*--fps ([0-9.]+).*/\1/');; esac
+          mkdir -p part
+          ffmpeg -loglevel error -y -framerate "$fps" -start_number ${{ matrix.from }} \
+            -i video/${{ matrix.shot }}-frames/f%05d.png \
+            -c:v libx264 -preset medium -crf 14 -pix_fmt yuv420p \
+            part/$(printf '%05d' ${{ matrix.from }}).mp4
       - uses: actions/upload-artifact@v4
-        if: always()
+        with:
+          name: part-${{ matrix.shot }}-${{ matrix.from }}
+          path: part/*.mp4
+          retention-days: 3
+
+  join:
+    needs: [plan, render]
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ${{ fromJson(needs.plan.outputs.shots) }}
+    steps:
+      - run: sudo apt-get install -y -qq ffmpeg > /dev/null
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: part-${{ matrix.shot }}-*
+          path: parts
+          merge-multiple: true
+      - run: |
+          ls parts/*.mp4 | sort | sed "s/^/file '/; s/$/'/" > list.txt
+          echo "$(wc -l < list.txt) parts"
+          ffmpeg -loglevel error -y -f concat -safe 0 -i list.txt -c copy -movflags +faststart "${{ matrix.shot }}.mp4"
+      - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.shot }}
-          path: |
-            video/*.mp4
-            video/*.srt
-            vite.log
-          if-no-files-found: warn
+          path: ${{ matrix.shot }}.mp4

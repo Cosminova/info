@@ -58,6 +58,12 @@ const HEIGHT = Number(option('height', LANDSCAPE ? 1080 : 1920)) / (PREVIEW ? 2 
 // over the frame for the whole runtime only asks for something.
 const BRAND = option('brand', '');
 const SITE = option('url', '');
+// A slice of the frames, [FROM, TO), for splitting one shot across machines.
+// A sliced run writes its frames and stops; joining them is the caller's job.
+const FROM = Number(option('from', 0));
+const TO = Number(option('to', Infinity));
+const SLICED = FROM > 0 || Number.isFinite(TO);
+const COUNT = flag('count');
 const SHOT_NAME = args[0] ?? 'moon';
 
 const OUT_DIR = path.resolve('video');
@@ -844,6 +850,10 @@ if (!shot) {
 }
 
 const totalSeconds = shot.beats.reduce((s, b) => s + b.seconds, 0);
+if (COUNT) {
+  console.log(shot.beats.reduce((n, b) => n + Math.round(b.seconds * FPS), 0));
+  process.exit(0);
+}
 
 // ---------------------------------------------------------------------------
 // Page setup
@@ -868,6 +878,10 @@ console.log(`rendering "${SHOT_NAME}" — ${totalSeconds}s at ${FPS} fps, `
   + `${Math.round(WIDTH)}x${Math.round(HEIGHT)}${PREVIEW ? ' (preview)' : ''}`);
 
 await page.goto(URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.waitForFunction(() => window.cosminova?.ready === true, { timeout: 180000 });
+// A cold dev server optimises dependencies on first load and reloads the page
+// once it has; wait that out rather than have it land mid-shot.
+await new Promise((r) => setTimeout(r, 8000));
 await page.waitForFunction(() => window.cosminova?.ready === true, { timeout: 180000 });
 
 await page.evaluate(({ date, brand, site, views, labels }) => {
@@ -1028,6 +1042,11 @@ for (const beat of shot.beats) {
   }
 
   for (let i = 0; i < frames; i++) {
+    if (frameIndex < FROM || frameIndex >= TO) {
+      frameIndex++;
+      continue;
+    }
+    const firstOfSlice = SLICED && frameIndex === FROM;
     const t = frames === 1 ? 1 : i / (frames - 1);
     // The clock is linear; the easing is the beat's own business, and most
     // beats do not want any.
@@ -1055,6 +1074,8 @@ for (const beat of shot.beats) {
     // Beats carrying streamed terrain are the ones worth waiting long for; a
     // camera out in space has nothing left to arrive.
     const onSurface = beat.name === 'descend' || Boolean(state.stand);
+    // A slice starting mid-shot arrives cold, with nothing streamed yet.
+    if (firstOfSlice) await settle(6000, 30000);
     await settle(onSurface ? 220 : 90, onSurface ? 2200 : 900);
     if (shot.labels) {
       await page.evaluate(() => window.__tags(Math.min(Math.max((window.cosminova.controls.distanceRadii - 25) / 25, 0), 1)));
@@ -1077,6 +1098,11 @@ for (const beat of shot.beats) {
   elapsed += beat.seconds;
 }
 process.stdout.write('\n');
+if (SLICED) {
+  await browser.close();
+  console.log(`  frames ${FROM}..${Math.min(TO, frameIndex) - 1} in ${FRAME_DIR}`);
+  process.exit(0);
+}
 
 // ---------------------------------------------------------------------------
 // Score
