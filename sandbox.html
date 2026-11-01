@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Cosminova Sandbox</title>
+    <link rel="icon" href="favicon.png" type="image/png" />
+    <link rel="stylesheet" href="src/ui/theme.css" />
+    <link rel="stylesheet" href="src/style.css" />
+    <link rel="stylesheet" href="src/sandbox/sandbox.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <div id="label-layer" class="label-layer" aria-hidden="true"></div>
+    <div id="ui-root"></div>
+
+    <div id="loading">
+      <div class="loading-inner">
+        <div class="loading-title">COSMINOVA</div>
+        <div class="loading-bar"><div id="loading-fill"></div></div>
+        <div id="loading-status" class="loading-sub">loading worlds…</div>
+      </div>
+    </div>
+
+    <div id="home" class="home">
+      <div id="home-backdrop" class="home-backdrop"></div>
+      <div class="home-inner">
+        <h1 class="home-title">COSMINOVA</h1>
+        <p class="home-tagline">Sandbox · collide real worlds</p>
+        <button type="button" id="home-start" class="home-start" disabled>
+          getting the universe ready…
+        </button>
+      </div>
+    </div>
+
+    <script type="module" src="src/sandbox/main.js"></script>
+  </body>
+</html>

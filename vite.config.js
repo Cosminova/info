@@ -30,6 +30,8 @@ export default defineConfig(({ mode }) => {
           // point on Earth's surface.
           index: fileURLToPath(new URL('index.html', import.meta.url)),
           sky: fileURLToPath(new URL('sky.html', import.meta.url)),
+          // sandbox: gravity and collisions. Not linked from anywhere.
+          sandbox: fileURLToPath(new URL('sandbox.html', import.meta.url)),
         },
       },
     },
