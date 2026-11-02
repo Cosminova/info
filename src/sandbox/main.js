@@ -4,6 +4,7 @@ import { UI, sliderToAccuracy, accuracyToSlider } from './ui.js';
 import { PRESETS, TEMPLATES, TEMPLATE_BY_KEY, fromTemplate, zeroMomentum } from './catalog.js';
 import { preload } from './textures.js';
 import { Tutorial } from './tutorial.js';
+import { countOnce } from '../counter.js';
 import {
   G, SPEEDS, YEAR, fmtSpeed, sci,
 } from './constants.js';
@@ -946,6 +947,7 @@ async function boot() {
       home.classList.add('is-going');
       setTimeout(() => home.remove(), 700);
       setTimeout(() => tour.offer(), 1400);
+      countOnce('players');
     };
     start.addEventListener('click', go);
     home.addEventListener('click', go);

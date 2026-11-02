@@ -42,6 +42,73 @@ if (targets.length && 'IntersectionObserver' in window && !still) {
 }
 
 /*
+ * Live counts under "At a glance".
+ *
+ * Visitors are counted here and players by the app, both once per browser:
+ * the flag is in localStorage, which this page and the app at /app/ share.
+ * Downloads are GitHub's own count of the installer across every release.
+ * Any number that cannot be fetched is left out rather than shown as a guess,
+ * and the row stays hidden if none can be.
+ */
+const live = document.querySelector('.stats__live');
+
+if (live) {
+  const COUNTER = 'https://abacus.jasoncameron.dev';
+  const NS = 'cosminova-site';
+  const human = !navigator.webdriver && !/^(localhost|127\.|\[::1\])/.test(location.hostname);
+
+  const counter = async (key, hit) => {
+    const res = await fetch(`${COUNTER}/${hit ? 'hit' : 'get'}/${NS}/${key}`);
+    if (!res.ok) throw new Error(`${key}: ${res.status}`);
+    return (await res.json()).value;
+  };
+
+  const visitors = (async () => {
+    let seen = true;
+    try {
+      seen = !human || localStorage.getItem('cosminova-counted-visitors') === '1';
+    } catch { /* storage blocked: read without counting */ }
+    const value = await counter('visitors', !seen);
+    if (!seen) localStorage.setItem('cosminova-counted-visitors', '1');
+    return value;
+  })();
+
+  const downloads = (async () => {
+    const res = await fetch('https://api.github.com/repos/Cosminova/info/releases?per_page=100');
+    if (!res.ok) throw new Error(`downloads: ${res.status}`);
+    let total = 0;
+    for (const release of await res.json()) {
+      for (const asset of release.assets ?? []) total += asset.download_count ?? 0;
+    }
+    return total;
+  })();
+
+  const show = (key, value) => {
+    const el = live.querySelector(`[data-count="${key}"]`);
+    if (!el) return;
+    live.hidden = false;
+    if (still || value < 10) {
+      el.textContent = value.toLocaleString('en-US');
+      return;
+    }
+    const t0 = performance.now();
+    const tick = (now) => {
+      const k = Math.min((now - t0) / 1400, 1);
+      el.textContent = Math.round(value * (1 - (1 - k) ** 3)).toLocaleString('en-US');
+      if (k < 1) requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+
+  const entries = [['visitors', visitors], ['players', counter('players', false)], ['downloads', downloads]];
+  for (const [key, promise] of entries) {
+    promise.then((value) => show(key, value)).catch(() => {
+      live.querySelector(`[data-count="${key}"]`)?.closest('li')?.remove();
+    });
+  }
+}
+
+/*
  * The hero slideshow.
  *
  * Everything below is an enhancement of markup that already works: the first
