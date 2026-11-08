@@ -44,8 +44,8 @@ if (targets.length && 'IntersectionObserver' in window && !still) {
 /*
  * Live counts under "At a glance".
  *
- * Visitors are counted here and players by the app, both once per browser:
- * the flag is in localStorage, which this page and the app at /app/ share.
+ * Every opening of this page is a visit. Players are counted by the app, once
+ * per browser.
  * Downloads are GitHub's own count of the installer across every release.
  * Any number that cannot be fetched is left out rather than shown as a guess,
  * and the row stays hidden if none can be.
@@ -63,15 +63,7 @@ if (live) {
     return (await res.json()).value;
   };
 
-  const visitors = (async () => {
-    let seen = true;
-    try {
-      seen = !human || localStorage.getItem('cosminova-counted-visitors') === '1';
-    } catch { /* storage blocked: read without counting */ }
-    const value = await counter('visitors', !seen);
-    if (!seen) localStorage.setItem('cosminova-counted-visitors', '1');
-    return value;
-  })();
+  const visitors = counter('visitors', human);
 
   const downloads = (async () => {
     const res = await fetch('https://api.github.com/repos/Cosminova/info/releases?per_page=100');

@@ -86,7 +86,6 @@ export const NEBULAE = [
   { key: 'ngc3603', name: 'NGC 3603', type: 'emission', ra: 168.79, dec: -61.26, distPc: 7000, radiusPc: 10, colours: [ORANGE, CREAM, HA], cavity: 0.8, shape: 1 },
   { key: 'ngc604', name: 'NGC 604', type: 'emission', ra: 23.65, dec: 30.78, distPc: 840000, radiusPc: 230, colours: [HA, OIII, PINK], cavity: 0.7 },
   { key: 'barnard-loop', name: "Barnard's Loop", type: 'emission', look: 'remnant', ra: 86.0, dec: -1.0, distPc: 440, radiusPc: 45, colours: [HA, HA, SII] },
-  { key: 'gum', name: 'Gum Nebula', type: 'emission', look: 'remnant', ra: 128.0, dec: -43.0, distPc: 450, radiusPc: 120, colours: [HA, SII, HA] },
   { key: 'ngc6888', name: 'Crescent Nebula', type: 'emission', look: 'remnant', label: 'Wolf\u2013Rayet wind bubble', ra: 303.03, dec: 38.35, distPc: 1500, radiusPc: 3.5, colours: [HA, OIII, GOLD] },
   { key: 'ngc2359', name: "Thor's Helmet", type: 'emission', look: 'remnant', label: 'Wolf\u2013Rayet wind bubble', ra: 109.3, dec: -13.2, distPc: 3670, radiusPc: 4, colours: [OIII, HA, BLUE] },
   { key: 'm57', name: 'Ring Nebula', type: 'planetary', ra: 283.396, dec: 33.029, distPc: 790, radiusPc: 0.25, colours: [HA, OIII, [0.95, 0.85, 0.3]] },
@@ -164,7 +163,6 @@ const PN_SHAPES = { bipolar: 1, elliptical: 0.35, irregular: 0.15, round: 0, ste
  * view from Earth.
  */
 const FAINT = {
-  gum: 0.06,
   'barnard-loop': 0.12,
   'vela-snr': 0.22,
   simeis147: 0.25,
