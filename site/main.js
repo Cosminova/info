@@ -44,8 +44,8 @@ if (targets.length && 'IntersectionObserver' in window && !still) {
 /*
  * Live counts under "At a glance".
  *
- * Every opening of this page is a visit. Players are counted by the app, once
- * per browser.
+ * Every opening of this page is a visit, and every start of the app (counted
+ * by the app itself) a launch.
  * Downloads are GitHub's own count of the installer across every release.
  * Any number that cannot be fetched is left out rather than shown as a guess,
  * and the row stays hidden if none can be.

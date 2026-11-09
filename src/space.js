@@ -79,7 +79,7 @@ import { Ship } from './engine/ship.js';
 import { inventForCatalogStar, inventStarSystem } from './engine/procgen.js';
 import { createExplorerUI } from './ui/explorer-ui.js';
 import { createHome } from './ui/home.js';
-import { countOnce } from './counter.js';
+import { count } from './counter.js';
 import { basePixelRatio, capTextureWidth, platform } from './engine/platform.js';
 
 const $ = (id) => document.getElementById(id);
@@ -93,7 +93,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
  * The sooner that is settled the less of it they see.
  */
 const home = createHome();
-home.whenStarted.then(() => countOnce('players'));
+home.whenStarted.then(() => count('players'));
 
 const MAJOR = new Set([
   'sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn',
