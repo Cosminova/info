@@ -93,7 +93,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
  * The sooner that is settled the less of it they see.
  */
 const home = createHome();
-home.whenStarted.then(() => count('players'));
+count('players');
 
 const MAJOR = new Set([
   'sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn',
