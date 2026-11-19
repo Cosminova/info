@@ -392,6 +392,11 @@ const RELIEF_GLSL = /* glsl */ `
           vec3 albedo = textureLod(uHighlandMap, vec2(0.5 + lon / 6.2831853, 0.5 + lat / 3.14159265), 5.0).rgb;
           float luma = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
           highland = mix(0.12, 1.0, smoothstep(uHighlandSplit * 0.8, uHighlandSplit * 1.25, luma));
+        } else if (uTerrain > 0.0) {
+          // No photograph to say where the high ground is: ranges run in belts
+          // a few hundred kilometres wide, with plains between them.
+          float belt = fbmd(d * 2.4 + vec3(mod(uSurfaceSeed * 0.171, 37.0), 3.1, 5.3), 3, 2.0, 0.5).x;
+          highland = mix(0.08, 1.0, smoothstep(-0.05, 0.3, belt));
         }
         vec3 q = d * uErosionFreq + vec3(mod(uSurfaceSeed * 0.613, 53.0), 7.7, mod(uSurfaceSeed * 0.287, 47.0));
         vec4 worn = erodedd(q, octaves, 0.45, 0.6);

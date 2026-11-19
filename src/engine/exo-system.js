@@ -100,6 +100,10 @@ function specFromPlanet(entry, described, hostKey) {
     // is turned down: flooded on its own it filled into round pools.
     terrain: gaseous ? 0 : clamp(0.0024 * Math.sqrt(6371 / described.radiusKm), 0.0012, 0.006),
     macroRelief: gaseous ? 0 : 0.0012,
+    // Worn, sharp-crested mountain ranges on top, peaks a few kilometres high
+    // with features about ten kilometres across.
+    erosion: gaseous ? 0 : clamp(described.radiusKm * 0.0003, 0.8, 3),
+    erosionFreq: gaseous ? 400 : Math.round(described.radiusKm / 10),
     rockDensity: gaseous ? 0 : 0.5,
     // Mesas and stepped cliffs, strongest on dry worlds where nothing fills
     // the steps back in; benches a few hundred metres high.
