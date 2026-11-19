@@ -249,7 +249,7 @@ export class ExoSystem {
     for (const entry of system.planets) {
       if (!entry.aAu && !entry.periodDays) continue;
       const described = describePlanet(entry, { starTeff: system.teff, aAu: entry.aAu });
-      const spec = specFromPlanet(entry, described, this.key);
+      const spec = { ...specFromPlanet(entry, described, this.key), ...PORTRAITS[entry.name] };
       if (!spec.aAu) {
         spec.aAu = entry.periodDays ? Math.cbrt((entry.periodDays / 365.25) ** 2 * (system.massSol || 1)) : 0.5;
       }
@@ -311,6 +311,12 @@ export class ExoSystem {
       const angle = c.phase + (days / c.periodDays) * Math.PI * 2;
       c.local.set(c.separationKm * Math.cos(angle), c.separationKm * Math.sin(angle) * Math.sin(c.incl), c.separationKm * Math.sin(angle) * Math.cos(c.incl));
       c.world.copy(host).add(c.local);
+      if (c.twin) {
+        // Beside the first star, across the line of sight from the host.
+        const t = c.twin;
+        t.local.set(-c.local.z, 0, c.local.x).setLength(t.offsetKm).add(c.local);
+        t.world.copy(host).add(t.local);
+      }
     }
     for (const item of this.planets) {
       const angle = item.angle0 + (days / item.spec.orbitDays) * Math.PI * 2;
@@ -391,6 +397,7 @@ export class ExoSystem {
   dispose() {
     this.star.group.removeFromParent();
     this.companion?.star.group.removeFromParent();
+    this.companion?.twin?.star.group.removeFromParent();
     for (const item of this.planets) {
       item.planet.group.removeFromParent();
       for (const moon of item.moons) moon.planet.group.removeFromParent();
@@ -411,7 +418,7 @@ export class ExoSystem {
  * brighter of the two. Catalogue systems keep the stars they are known to have.
  */
 function companionFor(system, teff) {
-  if (!system.generated) return null;
+  if (!system.generated) return knownCompanion(system);
   const random = seeded(hashName(`${system.host}:companion`));
   if (random() > 0.34) return null;
   const close = random() < 0.4;
@@ -456,6 +463,92 @@ function companionFor(system, teff) {
     world: new Vector3(),
   };
 }
+
+/**
+ * Stars a catalogue system is known to have beyond the one its planets
+ * circle. The archive lists planets by host, so a host that is one star of a
+ * triple comes without the other two; these are put back from the literature.
+ * `twin` is the second star of a distant pair, drawn beside the first.
+ */
+const KNOWN_COMPANIONS = {
+  // GJ 667 A and B, a K3 and K5 pair 12 AU apart, some 230 AU from C.
+  'GJ 667 C': { teff: 4600, radiusSol: 0.76, massSol: 0.73, separationAu: 230, twin: { teff: 4400, radiusSol: 0.7, offsetAu: 12 } },
+};
+
+function starFor(teff, radiusSol, seedName) {
+  return new Star({
+    radiusKm: radiusSol * SOLAR_RADIUS_KM,
+    colour: starTint(teff),
+    intensity: 0.95 * surfaceBrightness(teff),
+    look: starLook(teff, radiusSol, hashName(seedName)),
+  });
+}
+
+function knownCompanion(system) {
+  const known = KNOWN_COMPANIONS[system.host];
+  if (!known) return null;
+  const random = seeded(hashName(`${system.host}:companion`));
+  const star = starFor(known.teff, known.radiusSol, `${system.host}:A`);
+  star.group.name = `star:${system.host}:B`;
+  const info = {
+    close: false,
+    whiteDwarf: false,
+    teff: known.teff,
+    radiusSol: known.radiusSol,
+    massSol: known.massSol,
+    separationAu: known.separationAu,
+    periodDays: 365.25 * Math.sqrt(known.separationAu ** 3 / Math.max((system.massSol || 0.3) + known.massSol, 0.1)),
+  };
+  system.companionInfo = info;
+  const twin = known.twin && {
+    star: starFor(known.twin.teff, known.twin.radiusSol, `${system.host}:twin`),
+    offsetKm: known.twin.offsetAu * AU_KM,
+    luminositySol: known.twin.radiusSol ** 2 * (known.twin.teff / 5772) ** 4,
+    local: new Vector3(),
+    world: new Vector3(),
+  };
+  return {
+    ...info,
+    star,
+    twin,
+    separationKm: known.separationAu * AU_KM,
+    luminositySol: known.radiusSol ** 2 * (known.teff / 5772) ** 4,
+    phase: random() * Math.PI * 2,
+    incl: (random() - 0.5) * 0.8,
+    local: new Vector3(),
+    world: new Vector3(),
+  };
+}
+
+/**
+ * Planets drawn to a reference picture rather than left to the generator:
+ * whatever is set here replaces what classification invented for them.
+ */
+const PORTRAITS = {
+  // A dry, rust-red desert under thin air: near-black teal sky overhead,
+  // warm dust low down, and worn, sharp ranges standing out of the plains.
+  'GJ 667 C c': {
+    palette: [[0.6, 0.29, 0.17], [0.47, 0.23, 0.15], [0.66, 0.4, 0.27], [0.86, 0.8, 0.74]],
+    iceLatitude: 0,
+    oceanFraction: 0,
+    seaLevelKm: 0,
+    specular: 0,
+    cloudCover: 0,
+    terrace: 0,
+    rockDensity: 0.12,
+    craterOctaves: 2,
+    erosion: 2.6,
+    atmosphere: {
+      height: 0.02,
+      density: 0.25,
+      tint: [0.22, 0.6, 0.66],
+      aerosol: 0.035,
+      aerosolHeight: 1,
+      dustTint: [1, 0.62, 0.4],
+      dustBroad: 0.6,
+    },
+  },
+};
 
 /**
  * An invented ring system: a radial profile of bands and gaps, icy, dusty or

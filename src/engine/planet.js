@@ -395,8 +395,8 @@ const RELIEF_GLSL = /* glsl */ `
         } else if (uTerrain > 0.0) {
           // No photograph to say where the high ground is: ranges run in belts
           // a few hundred kilometres wide, with plains between them.
-          float belt = fbmd(d * 2.4 + vec3(mod(uSurfaceSeed * 0.171, 37.0), 3.1, 5.3), 3, 2.0, 0.5).x;
-          highland = mix(0.08, 1.0, smoothstep(-0.05, 0.3, belt));
+          float belt = fbmd(d * 5.0 + vec3(mod(uSurfaceSeed * 0.171, 37.0), 3.1, 5.3), 3, 2.0, 0.5).x;
+          highland = mix(0.15, 1.0, smoothstep(-0.1, 0.25, belt));
         }
         vec3 q = d * uErosionFreq + vec3(mod(uSurfaceSeed * 0.613, 53.0), 7.7, mod(uSurfaceSeed * 0.287, 47.0));
         vec4 worn = erodedd(q, octaves, 0.45, 0.6);

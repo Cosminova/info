@@ -1286,6 +1286,7 @@ function maybeLoadExo(key) {
   exoSystem = new ExoSystem(system);
   extras.add(exoSystem.star.group);
   if (exoSystem.companion) extras.add(exoSystem.companion.star.group);
+  if (exoSystem.companion?.twin) extras.add(exoSystem.companion.twin.star.group);
   for (const item of exoSystem.planets) extras.add(item.planet.group);
   for (const moon of exoSystem.moons) extras.add(moon.planet.group);
   // Bodies have to be somewhere before anything can be put in orbit around them.
@@ -3574,6 +3575,22 @@ function frame(now) {
         flare: !controls.flying,
       });
       companion.star.group.visible = true;
+      const twin = companion.twin;
+      if (twin) {
+        renderOffset(twin.star.group.position, twin.world, exoSystem.key, twin.local);
+        tmpCameraLocal.copy(twin.star.group.position).negate();
+        const dt = tmpCameraLocal.length();
+        twin.star.update({
+          cameraLocal: tmpCameraLocal,
+          time: now / 1000,
+          distanceKm: dt,
+          pixelsPerRadian,
+          visibility: pointVisibility(twin.luminositySol, dt, 8.7 + 2.5 * Math.log10(Math.max(58 / Math.max(camera.fov, 1e-4), 1))),
+          brightness: exoSunIntensity(exoFlux(twin.luminositySol, dt / 149597870.7), exoReference, state.exposure),
+          flare: !controls.flying,
+        });
+        twin.star.group.visible = true;
+      }
     }
     for (const item of exoSystem.planets) {
       const distance = cameraLocalIn(item.world, item.spec.key, tmpCameraLocal).length();

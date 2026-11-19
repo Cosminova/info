@@ -257,22 +257,24 @@ const FLARE_FRAGMENT = /* glsl */ `
     float edge = pow(1.0 - d, 2.0);
     float halo = (exp(-limb * 10.0) * 0.5 + exp(-limb * 3.5) * 0.25 + exp(-limb * 1.4) * 0.07) * edge;
 
-    float c = cos(uAngle), s = sin(uAngle);
-    vec2 q = mat2(c, -s, s, c) * vUv;
-    float spikes = 0.0;
-    for (int i = 0; i < 2; i++) {
-      vec2 r = i == 0 ? q : vec2(-q.y, q.x);
-      float along = abs(r.x);
-      float width = 0.0025 + 0.006 * along;
-      spikes += exp(-pow(r.y / width, 2.0)) * pow(max(1.0 - along, 0.0), 2.6);
-    }
-    float ghost = exp(-pow((d - 0.62) / 0.05, 2.0)) * 0.02 * uSpikes;
+    // A starburst of fine rays of uneven strength, the way scattering in a
+    // real lens breaks up a bright point, rather than four clean vanes.
+    float ang = atan(vUv.y, vUv.x) + uAngle;
+    float rays = pow(0.5 + 0.5 * sin(ang * 23.0 + 1.3), 10.0) * 0.6
+      + pow(0.5 + 0.5 * sin(ang * 37.0 + 4.1), 14.0) * 0.5
+      + pow(0.5 + 0.5 * sin(ang * 11.0 + 2.2), 8.0) * 0.45;
+    rays *= exp(-limb * 4.5) * edge;
+    // A long, thin horizontal streak through the core: screen-horizontal
+    // whichever way the camera faces, since the quad is a view billboard.
+    float streak = exp(-pow(vUv.y / (0.004 + 0.01 * abs(vUv.x)), 2.0)) * pow(max(1.0 - abs(vUv.x), 0.0), 2.2);
+    float ghost = exp(-pow((d - 0.62) / 0.05, 2.0)) * 0.02;
 
-    // Kept off the disc itself once it is resolved, so a close star keeps its
-    // surface; a disc a few pixels across is all glare anyway.
+    // The halo is kept off a resolved disc so a close star keeps its surface;
+    // the streak and rays are the lens, not the star, and stay however close.
     float off = mix(1.0, smoothstep(uDiscFraction * 0.85, uDiscFraction * 1.15, d), uResolved);
     vec3 tint = mix(uColour, vec3(1.0), 0.35 * exp(-d * 6.0));
-    gl_FragColor = vec4(tint * uIntensity * (halo + spikes * uSpikes * 0.9 + ghost) * off, 1.0);
+    float lens = (rays * 0.35 + streak * 0.7) * mix(1.0, 0.45, uResolved);
+    gl_FragColor = vec4(tint * uIntensity * (halo * off + lens + ghost * off), 1.0);
   }
 `;
 
@@ -346,6 +348,7 @@ export class Star {
     this.mesh = new Mesh(geometry, this.material);
     this.mesh.frustumCulled = false;
     this.group.add(this.mesh);
+    this.baseIntensity = intensity;
 
     this.baseCorona = intensity * 0.22 * (surface.glow ?? 1);
     // The glow of a swollen star reaches several of its own radii out, and
@@ -439,6 +442,13 @@ export class Star {
     this.corona.visible = this.mesh.visible;
 
     const light = clamp(brightness, 0, 4);
+    // A sun a few dozen pixels across, the way a host star stands in its own
+    // planet's sky, clips to white in any camera; drawn at surface brightness
+    // it came out a grey disc. Close enough to fill the view it is a surface
+    // again and keeps its detail.
+    const discRadius = discPixels / 2;
+    const blowout = 1 + 1.2 * (1 - clamp((discRadius - 15) / 120, 0, 1)) * clamp(light, 0, 1);
+    this.material.uniforms.uIntensity.value = this.baseIntensity * blowout;
     this.flare.visible = flare && this.mesh.visible && pixelsPerRadian > 0 && light > 0.002;
     if (this.flare.visible) {
       const discRadiusPx = discPixels / 2;
