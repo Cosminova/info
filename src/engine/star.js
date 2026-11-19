@@ -79,7 +79,13 @@ const SURFACE_FRAGMENT = /* glsl */ `
     vec3 dir = normalize(vDir);
     vec2 uv = vec2(0.5 + atan(dir.z, -dir.x) / 6.2831853, 0.5 + asin(clamp(dir.y, -1.0, 1.0)) / 3.14159265);
 
-    vec3 base = uHasMap > 0.5 ? texture2D(uMap, uv).rgb : uColour;
+    // Gradient taken the short way round where u wraps, or the seam reads the
+    // coarsest mip and draws a line down the disc.
+    vec2 gx = dFdx(uv);
+    vec2 gy = dFdy(uv);
+    gx.x -= floor(gx.x + 0.5);
+    gy.x -= floor(gy.x + 0.5);
+    vec3 base = uHasMap > 0.5 ? textureGrad(uMap, uv, gx, gy).rgb : uColour;
 
     // Convective granulation: a fine boiling field over larger supergranules,
     // its scale and contrast set by the star (see starLook in stellar.js). The

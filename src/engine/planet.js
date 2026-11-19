@@ -919,6 +919,18 @@ uniform float uWaveTime;
     return vec2(0.5 + lon / 6.2831853, 0.5 + lat / 3.14159265);
   }
 
+  // Where longitude wraps, u jumps from 1 to 0 between neighbouring pixels and
+  // the hardware reads that as the whole map in one pixel: the coarsest mip,
+  // drawn as a dashed line down the globe. The gradient taken the short way
+  // round the wrap is the true one.
+  vec4 wrapTexture(sampler2D map, vec2 uv) {
+    vec2 gx = dFdx(uv);
+    vec2 gy = dFdy(uv);
+    gx.x -= floor(gx.x + 0.5);
+    gy.x -= floor(gy.x + 0.5);
+    return textureGrad(map, uv, gx, gy);
+  }
+
   /**
    * Colour-map sample that does not pinch at the poles.
    *
@@ -930,7 +942,7 @@ uniform float uWaveTime;
    */
   vec3 sampleColourMap(vec3 dir, vec2 uv) {
     vec2 clamped = vec2(uv.x, clamp(uv.y, 0.06, 0.94));
-    vec3 albedo = texture2D(uColourMap, clamped).rgb;
+    vec3 albedo = wrapTexture(uColourMap, clamped).rgb;
     if (uPolarSmooth < 0.01) return albedo;
     float pole = smoothstep(0.55, 0.80, abs(dir.y));
     if (pole < 0.01) return albedo;
@@ -1139,7 +1151,7 @@ uniform float uWaveTime;
       // underfoot and quiet at the limb, whereas differencing the elevation
       // needed a stencil wide enough to smear the surface into streaks.
       vec2 normalUv = dirToUv(dir);
-      vec4 sampled = texture2D(uNormalMap, normalUv);
+      vec4 sampled = wrapTexture(uNormalMap, normalUv);
       float normalTexel = 6.2831853 / float(textureSize(uNormalMap, 0).x);
       float magnified = 1.0 - smoothstep(0.5, 1.0, pixelAngle / normalTexel);
       if (magnified > 0.0) sampled = mix(sampled, bilinearExact(uNormalMap, normalUv), magnified);
@@ -1211,7 +1223,7 @@ uniform float uWaveTime;
       // on the long side clears the stones off the ground twenty metres out.
       float footprintM = length(vRel) * 1000.0 / uPixelsPerRadian * sqrt(footprintScale);
       if (footprintM < 6.0) {
-        float sea = uHasOcean > 0.5 ? texture2D(uOceanMap, uv).r : wet;
+        float sea = uHasOcean > 0.5 ? wrapTexture(uOceanMap, uv).r : wet;
         vec3 metres = uDetailFrac + (uCameraRel + vRel) * 1000.0;
         detailShade = groundDetail(dir, metres, footprintM, 1.0 - sea, normal);
       }
@@ -1238,7 +1250,15 @@ uniform float uWaveTime;
         int octaves = int(clamp(log2(0.5 / max(pixelAngle * freq, 1e-12)), 1.0, 9.0));
         float mottle = fbmd(dir * freq + 31.0, octaves, 2.03, 0.6).x;
         float steep = 1.0 - max(dot(normal, dir), 0.0);
-        vec3 own3 = broad * (1.0 + mottle * 0.5) * (1.0 + 0.9 * smoothstep(0.03, 0.25, steep));
+        // Flats are fine dust, low in contrast; steep faces are bedrock the dust
+        // cannot cling to — fresher, a touch bluer, and cracked into crags.
+        vec3 own3 = broad * (1.0 + mottle * 0.35);
+        float bare = smoothstep(0.05, 0.3, steep);
+        if (bare > 0.0) {
+          float crag = ridgedd(dir * freq * 2.3 + 11.0, min(octaves, 5)).x;
+          vec3 bedrock = broad * vec3(0.96, 0.98, 1.03) * (1.15 + 0.9 * (crag - 0.5) + mottle * 0.3);
+          own3 = mix(own3, bedrock * 1.35, bare);
+        }
         albedo = mix(albedo, own3, own);
       }
     }
@@ -1389,7 +1409,7 @@ uniform float uWaveTime;
     // Sun glint off water. The mask comes from a measured ocean map where there
     // is one and from the flooded terrain where there is not, so an invented
     // world gets the same highlight as Earth does.
-    float water = uHasOcean > 0.5 ? texture2D(uOceanMap, uv).r : wet;
+    float water = uHasOcean > 0.5 ? wrapTexture(uOceanMap, uv).r : wet;
     if (water > 0.001 && uSpecular > 0.0) {
       // Waves: a long swell and a short chop, drifting in different directions,
       // drawn into the normal where a pixel is small enough to show them. Past
@@ -1495,7 +1515,7 @@ uniform float uWaveTime;
     if (uHasNight > 0.5) {
       // City lights, strongest where the sun is well below the horizon.
       float night = 1.0 - smoothstep(-0.12, 0.10, mu0);
-      colour += texture2D(uNightMap, uv).rgb * night * 0.9;
+      colour += wrapTexture(uNightMap, uv).rgb * night * 0.9;
     }
 
     // Thermal emission. A rocky world past a thousand kelvin glows from cracks
