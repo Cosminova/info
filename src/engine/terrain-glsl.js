@@ -429,12 +429,10 @@ export const TERRAIN_GLSL = /* glsl */ `
   }
 
   vec4 craterOctave(
-    vec3 p, float density, float complexity,
+    vec3 ip, vec3 fp, float density, float complexity,
     vec3 up, vec3 sunTangent, float tanElevation, float shadowScale, inout float shade,
     inout vec2 marks
   ) {
-    vec3 ip = floor(p);
-    vec3 fp = fract(p);
 
     // Deepest cavity and highest rim seen so far, each with its gradient. The
     // winner is taken outright rather than blended: where two crater rims cross,
@@ -555,9 +553,14 @@ export const TERRAIN_GLSL = /* glsl */ `
    * terrain it lands on rather than adding to it. strength is the height of the
    * largest craters as a fraction of the body radius.
    */
+  uniform vec3 uCraterOriginI[7];
+  uniform vec3 uCraterOriginF[7];
+  vec3 gCraterDelta = vec3(0.0);
+  float gCraterPrecise = 0.0;
+
   vec4 craterTerrain(
     vec3 dir, float baseFreq, float octaves, float density, float cellKm, float complexKm,
-    vec3 sunLocal, float shadowScale, vec3 seed, out float shade, out vec2 marks
+    vec3 sunLocal, float shadowScale, vec3 seed, float precise, out float shade, out vec2 marks
   ) {
     vec4 height = vec4(0.0);
     float freq = baseFreq;
@@ -615,8 +618,22 @@ export const TERRAIN_GLSL = /* glsl */ `
       // planets sharing a crater frequency share their whole crater population,
       // which is the single most recognisable way two procedural surfaces give
       // themselves away as the same surface.
+      vec3 lattice = dir * freq + seed;
+      vec3 ip = floor(lattice);
+      vec3 fp = lattice - ip;
+      if (precise > 0.5) {
+        // A direction in single float resolves about 1e-7 of a radius, which on
+        // the Moon is ten centimetres: the finest octave's craters came out
+        // stepped into flat blocks that size. The terrain cache supplies each
+        // octave's lattice point under its anchor exactly, split into whole cells
+        // and a remainder, and the small offset from that anchor separately.
+        vec3 q = uCraterOriginF[i] + gCraterDelta * freq;
+        vec3 whole = floor(q);
+        ip = uCraterOriginI[i] + whole;
+        fp = q - whole;
+      }
       vec4 layer = craterOctave(
-        dir * freq + seed, density, complexity,
+        ip, fp, density, complexity,
         dir, sunTangent, tanElevation,
         contrastFade > 0.0 ? wantShade : 0.0, octaveShade, octaveMarks
       );

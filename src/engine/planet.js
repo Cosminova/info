@@ -32,6 +32,7 @@ import { bodyGeology } from './geology.js';
 import { SHADOW_GLSL } from './shadow-glsl.js';
 import { GROUND_DETAIL_GLSL } from './ground-detail-glsl.js';
 import { CRATER_DETAIL_MARGIN, CRATER_LACUNARITY, TERRAIN_GLSL } from './terrain-glsl.js';
+import { CACHE_GLSL, TerrainCache } from './terrain-cache.js';
 import { platform } from './platform.js';
 
 /** Patch budget for a body that does not ask for its own. */
@@ -345,7 +346,7 @@ const RELIEF_GLSL = /* glsl */ `
       float basinCellKm = uRadius / uBasinFreq;
       t += craterTerrain(
         d, uBasinFreq, 1.0, 0.3, basinCellKm, 0.0,
-        sunDir, wantShadow * uBasinDepth, craterSeed * 0.37, basinShade, basinMarks
+        sunDir, wantShadow * uBasinDepth, craterSeed * 0.37, 0.0, basinShade, basinMarks
       ) * (basinCellKm * uBasinDepth);
       shade = basinShade;
       marks = basinMarks;
@@ -359,7 +360,7 @@ const RELIEF_GLSL = /* glsl */ `
       float craterScale = uCraterDepth * CRATER_DEPTH_NORM;
       t += craterTerrain(
         d, uCraterFreq, octaves, uCraterDensity, cellKm, uComplexKm,
-        sunDir, wantShadow * craterScale, craterSeed, craterShade, craterMarks
+        sunDir, wantShadow * craterScale, craterSeed, gCraterPrecise, craterShade, craterMarks
       ) * (cellKm * craterScale);
       // Shadows from every scale compound: a boulder field inside a shadowed
       // crater floor is not lit twice.
@@ -574,7 +575,37 @@ const SURFACE_UNIFORMS_GLSL = /* glsl */ `
   uniform float uTerraceKm;
 `;
 
+/**
+ * Bilinear filtering done in the shader, for maps seen far past their own
+ * resolution. The hardware interpolates with eight bits of sub-texel weight, so
+ * a texel magnified a thousand times comes back as 256 flat steps: on the Moon,
+ * whose elevation texel is 2.7 km, the ground stood in terraces ten metres wide,
+ * and the normal map shaded it in slabs. Longitude wraps; latitude clamps.
+ */
+const FILTER_GLSL = /* glsl */ `
+  vec4 texelAt(sampler2D map, ivec2 c, ivec2 size) {
+    c.x = ((c.x % size.x) + size.x) % size.x;
+    c.y = clamp(c.y, 0, size.y - 1);
+    return texelFetch(map, c, 0);
+  }
+
+  vec4 bilinearExact(sampler2D map, vec2 uv) {
+    ivec2 size = textureSize(map, 0);
+    vec2 s = uv * vec2(size) - 0.5;
+    vec2 i0 = floor(s);
+    vec2 f = s - i0;
+    ivec2 c = ivec2(i0);
+    return mix(
+      mix(texelAt(map, c, size), texelAt(map, c + ivec2(1, 0), size), f.x),
+      mix(texelAt(map, c + ivec2(0, 1), size), texelAt(map, c + ivec2(1, 1), size), f.x),
+      f.y
+    );
+  }
+`;
+
 const HEIGHT_GLSL = /* glsl */ `
+  ${FILTER_GLSL}
+
   vec2 dirToUv(vec3 d) {
     // Equirectangular, matching the source maps: u from longitude measured off
     // the -X axis, v from latitude. Bodies are built so that +Y is north.
@@ -597,7 +628,10 @@ const HEIGHT_GLSL = /* glsl */ `
     // spacing rather than the pixel spacing.
     float lod = max(log2(max(pixelAngle * 5.0, 1e-9) / texelAngle), 0.0) + uDemLodBias;
     lod = max(lod, 0.0);
-    return textureLod(uDemMap, dirToUv(d), lod).r;
+    vec2 uv = dirToUv(d);
+    float filtered = textureLod(uDemMap, uv, lod).r;
+    if (lod >= 1.0) return filtered;
+    return mix(bilinearExact(uDemMap, uv).r, filtered, lod);
   }
 
   /**
@@ -620,7 +654,12 @@ const HEIGHT_GLSL = /* glsl */ `
 
   /** Height of the drawn surface above the reference radius, in kilometres. */
   float surfaceHeightKm(vec3 d, float pixelAngle) {
-    float h = demHeight(d, pixelAngle) * uDemStrength + proceduralHeight(d, pixelAngle);
+    // Relief finer than the vertex spacing cannot be carried by the mesh, only
+    // aliased by it: each vertex would land on a different phase of a crater too
+    // small to draw, and as the camera moved and the detail faded in and out the
+    // ground would visibly reshape itself underfoot. That relief is left to the
+    // fragment stage, which shades it per pixel.
+    float h = demHeight(d, pixelAngle) * uDemStrength + proceduralHeight(d, pixelAngle * 5.0);
     // A sea is drawn by flooding the terrain rather than by laying a second
     // sphere over it: below the waterline the drawn surface is the waterline.
     // Doing it here rather than only in the fragment stage is what makes the
@@ -844,6 +883,8 @@ uniform float uWaveTime;
   ${FRACTURE_GLSL}
   ${RELIEF_GLSL}
   ${GROUND_DETAIL_GLSL}
+  ${CACHE_GLSL}
+  ${FILTER_GLSL}
 
   vec2 dirToUv(vec3 d) {
     float lon = atan(d.z, -d.x);
@@ -971,9 +1012,46 @@ uniform float uWaveTime;
    */
   float gFloodFill;
 
+  /**
+   * The procedural relief read from the terrain cache, at the level whose texel
+   * matches this fragment's footprint. Returns how much of the answer the cache
+   * could give: none outside it, part where its last level fades out.
+   */
+  float cachedTerrain(vec3 dir, float footprint, out vec4 terrain, out vec2 marks, out float shadow) {
+    terrain = vec4(0.0);
+    marks = vec2(0.0);
+    shadow = 0.0;
+    vec2 g = cachePlane(vRel);
+    // Coarse enough for the footprint, and far enough down the stack that both
+    // this level and the next one blended towards still cover the point.
+    float lf = max(max(
+      log2(max(cacheReach(g, 0), 1e-6) / 0.45),
+      log2(max(footprint, 1e-12) / uCacheT0)), 0.0);
+    int level = int(lf);
+    if (!cacheUsable(level)) return 0.0;
+    float blend = smoothstep(0.5, 1.0, fract(lf));
+    float h;
+    vec4 relief = cacheRelief(g, level, h);
+    float weight = 1.0;
+    if (blend > 0.0) {
+      if (cacheUsable(level + 1)) {
+        float h1;
+        vec4 relief1 = cacheRelief(g, level + 1, h1);
+        relief = mix(relief, relief1, blend);
+        h = mix(h, h1, blend);
+      } else {
+        weight = 1.0 - blend;
+      }
+    }
+    terrain = vec4(h, relief.x * uCacheE + relief.y * uCacheN);
+    marks = relief.zw;
+    if (uTerrainShadows > 0.5) shadow = cacheShadow(g, dir, h, relief.xy, level);
+    return weight;
+  }
+
   vec3 surfaceNormal(
-    vec3 dir, float pixelAngle, out float shadow, out vec2 marks, out float fracture,
-    out float groundKm
+    vec3 dir, float pixelAngle, float footprint, out float shadow, out vec2 marks,
+    out float fracture, out float groundKm
   ) {
     // Accumulated as a dimensionless slope, kilometres of rise per kilometre of
     // run. The procedural terms differentiate with respect to direction, so they
@@ -989,8 +1067,27 @@ uniform float uWaveTime;
     // low altitude the ground underfoot and the horizon differ by orders of
     // magnitude, so a single figure for the whole body either aliases in the
     // distance or throws away detail nearby.
-    vec4 terrain = proceduralTerrain(
-      dir, pixelAngle, uSunDir, uTerrainShadows, shadow, marks, fracture, gFloodFill);
+    vec4 cached;
+    vec2 cachedMarks;
+    float cachedShadow;
+    float analytic = 1.0;
+    if (uCacheOn > 0.5) {
+      analytic = 1.0 - cachedTerrain(dir, footprint, cached, cachedMarks, cachedShadow);
+    }
+    vec4 terrain = vec4(0.0);
+    shadow = 0.0;
+    marks = vec2(0.0);
+    fracture = 0.0;
+    gFloodFill = 0.0;
+    if (analytic > 0.0) {
+      terrain = proceduralTerrain(
+        dir, pixelAngle, uSunDir, uTerrainShadows, shadow, marks, fracture, gFloodFill);
+    }
+    if (analytic < 1.0) {
+      terrain = mix(cached, terrain, analytic);
+      marks = mix(cachedMarks, marks, analytic);
+      shadow = mix(cachedShadow, shadow, analytic);
+    }
     // The seabed, before any flooding: the caller needs the depth of the water
     // over this point, and reading it back from the flooded height would give
     // zero everywhere under the sea. Procedural relief only, which is all a
@@ -1014,7 +1111,12 @@ uniform float uWaveTime;
       // hardware mipmaps and anisotropically filters it: shading stays sharp
       // underfoot and quiet at the limb, whereas differencing the elevation
       // needed a stencil wide enough to smear the surface into streaks.
-      vec3 packed = normalize(texture2D(uNormalMap, dirToUv(dir)).xyz * 2.0 - 1.0);
+      vec2 normalUv = dirToUv(dir);
+      vec4 sampled = texture2D(uNormalMap, normalUv);
+      float normalTexel = 6.2831853 / float(textureSize(uNormalMap, 0).x);
+      float magnified = 1.0 - smoothstep(0.5, 1.0, pixelAngle / normalTexel);
+      if (magnified > 0.0) sampled = mix(sampled, bilinearExact(uNormalMap, normalUv), magnified);
+      vec3 packed = normalize(sampled.xyz * 2.0 - 1.0);
       vec3 north = normalize(vec3(0.0, 1.0, 0.0) - dir * dir.y);
       vec3 east = normalize(cross(vec3(0.0, 1.0, 0.0), dir));
       // The floor on the vertical component bounds the slope this can produce.
@@ -1053,7 +1155,11 @@ uniform float uWaveTime;
     vec2 craterMarks;
     float fractureDepth;
     float groundKm;
-    vec3 normal = surfaceNormal(dir, pixelAngle, craterShadow, craterMarks, fractureDepth, groundKm);
+    // The cache is isotropic, so it is read at the mean of the footprint's two
+    // sides: the long one alone blurs the ground, the short one aliases it.
+    float footprint = (length(vRel) / uRadius) / uPixelsPerRadian * sqrt(footprintScale);
+    vec3 normal = surfaceNormal(
+      dir, pixelAngle, footprint, craterShadow, craterMarks, fractureDepth, groundKm);
 
     // How far under water this point is, and how much of the sea's own character
     // it should take on. Shallow water keeps the colour of what is below it,
@@ -1173,7 +1279,9 @@ uniform float uWaveTime;
     float lambert = lit;
     float lommel = lit / max(lit + mu, 0.03) * 2.0;
     float shade = mix(lambert, lommel * mu, uPhotometry);
-    shade *= 1.0 - craterShadow * 0.88 * sunVis;
+    // Without air nothing scatters light into a shadow, so on an airless world
+    // it is black but for what the sky fill and planetshine add back.
+    shade *= 1.0 - craterShadow * (uAtmosphereDensity > 0.0 ? 0.88 : 0.97) * sunVis;
 
     // Ring shadow. Sunlight reaching this point has crossed the ring plane, so
     // what survives is Beer-Lambert transmission through the rings' optical depth
@@ -2043,7 +2151,15 @@ export class Planet {
       cameraRel.subVectors(eye, anchor);
       modelView.multiplyMatrices(camera.matrixWorldInverse, this.mesh.matrixWorld);
       viewRotation.setFromMatrix4(modelView);
+      this.terrainCache?.update(_renderer, eye);
     };
+    if (TerrainCache.suits(spec, this.material.uniforms)) {
+      this.terrainCache = new TerrainCache({
+        uniforms: this.material.uniforms,
+        chunks: SURFACE_UNIFORMS_GLSL + TERRAIN_GLSL + FRACTURE_GLSL + RELIEF_GLSL + HEIGHT_GLSL,
+        radiusKm: this.radius,
+      });
+    }
     this.mesh.name = `${spec.key}-surface`;
     this.spin.add(this.mesh);
 
