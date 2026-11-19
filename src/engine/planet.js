@@ -289,6 +289,14 @@ const RELIEF_GLSL = /* glsl */ `
   uniform float uVolcanoHeight;    // km
   uniform float uVolcanoDensity;
   uniform float uDebugGeology;
+  uniform float uErosion;          // km
+  uniform float uErosionFreq;      // per radius
+  uniform float uErosionOctaves;   // finest kept, from the precision of a direction
+  // Where the relief goes on a mapped world: the measured albedo, read blurred,
+  // above uHighlandSplit (linear). Dark lava plains stay smooth that way, as
+  // the maria are. Zero puts it everywhere.
+  uniform sampler2D uHighlandMap;
+  uniform float uHighlandSplit;
 
   // Written by proceduralTerrain purely so a diagnostic can draw them.
   float gFloodMask;
@@ -304,7 +312,7 @@ const RELIEF_GLSL = /* glsl */ `
     if (uCraterOctaves < 0.05 && uRoughness < 0.001 && uFractureDepth < 0.001 &&
         uIrregular < 0.001 && uMacroRelief < 0.001 && uBasinDepth < 0.001 && uTerrain < 0.00001 &&
         uCrustRelief < 0.001 && uFloodCoverage < 0.001 && uRiftCoverage < 0.001 &&
-        uVolcanoCoverage < 0.001 && uOceanRelief < 0.001) return vec4(0.0);
+        uVolcanoCoverage < 0.001 && uOceanRelief < 0.001 && uErosion < 0.0001) return vec4(0.0);
 
     float cellKm = uRadius / uCraterFreq;
     // Where this body's craters fell. Kept small so the lattice coordinate does
@@ -373,6 +381,24 @@ const RELIEF_GLSL = /* glsl */ `
       float scale = cellKm * uRoughness * roughFade;
       t.x += rough.x * scale;
       t.yzw += rough.yzw * uCraterFreq * 0.6 * scale;
+    }
+    if (uErosion > 0.0001) {
+      float octaves = min(log2(0.5 / max(pixelAngle * uErosionFreq, 1e-12)), uErosionOctaves);
+      if (octaves > 0.0) {
+        float highland = 1.0;
+        if (uHighlandSplit > 0.0) {
+          float lon = atan(d.z, -d.x);
+          float lat = asin(clamp(d.y, -1.0, 1.0));
+          vec3 albedo = textureLod(uHighlandMap, vec2(0.5 + lon / 6.2831853, 0.5 + lat / 3.14159265), 5.0).rgb;
+          float luma = dot(albedo, vec3(0.2126, 0.7152, 0.0722));
+          highland = mix(0.12, 1.0, smoothstep(uHighlandSplit * 0.8, uHighlandSplit * 1.25, luma));
+        }
+        vec3 q = d * uErosionFreq + vec3(mod(uSurfaceSeed * 0.613, 53.0), 7.7, mod(uSurfaceSeed * 0.287, 47.0));
+        vec4 worn = erodedd(q, octaves, 0.45, 0.6);
+        float scale = uErosion * highland;
+        t.x += worn.x * scale;
+        t.yzw += worn.yzw * uErosionFreq * scale;
+      }
     }
     // How deep into a fracture the point sits is handed back for colouring: fresh
     // ice exposed in a trough is brighter than the surrounding surface on
@@ -1473,9 +1499,10 @@ uniform float uWaveTime;
       colour += uHeatColour * uHeatGlow * heat * uSunIntensity * 0.6;
     }
 
-    if (uAtmosphereDensity > 0.0) {
-      // Haze over the disc only. A term that peaks at the silhouette reads as a
-      // bright outline against space, so keep this interior and dim.
+    if (uAtmosphereDensity > 0.0 && uOvercast > 0.0) {
+      // Haze over a cloud deck's disc, which the sky passes leave alone from
+      // outside. A term that peaks at the silhouette reads as a bright outline
+      // against space, so keep this interior and dim.
       float grazing = max(dot(dir, view), 0.0);
       float haze = pow(1.0 - grazing, 1.8) * smoothstep(0.0, 0.22, grazing);
       colour += uAtmosphereTint * uAtmosphereDensity * haze * lit * 0.12;
@@ -1763,6 +1790,11 @@ const SKY_INSCATTER_FRAGMENT = /* glsl */ `
   // Aerosol colour. Earth's haze is grey; Mars's dust grains are the size that
   // throws blue light forward, which is why its sunsets are blue.
   uniform vec3 uMieTint;
+  uniform vec3 uDustTint;
+  uniform float uDustBroad;
+  // 0 under the air, 1 well above it. Seen from space the path radiance sits
+  // over a lit surface instead of a black sky, and at uBrightness it drowns it.
+  uniform float uFromSpace;
 
   void main() {
     #include <logdepthbuf_fragment>
@@ -1779,6 +1811,12 @@ const SKY_INSCATTER_FRAGMENT = /* glsl */ `
     float g = uMieG;
     float hg = 1.0 + g * g - 2.0 * g * mu;
     float phaseM = (1.0 - g * g) / (12.5663706 * pow(max(hg, 1e-4), 1.5));
+    // Dust grains also throw a broad lobe sideways in their own colour, which
+    // is most of what a dusty sky and disc are lit by away from the sun.
+    const float gBroad = 0.3;
+    float hb = 1.0 + gBroad * gBroad - 2.0 * gBroad * mu;
+    float phaseB = (1.0 - gBroad * gBroad) / (12.5663706 * pow(hb, 1.5));
+    vec3 mieColour = mix(phaseM * uMieTint, phaseB * uDustTint, uDustBroad);
 
     vec2 viewColumn = vec2(0.0);
     vec3 sumR = vec3(0.0);
@@ -1806,6 +1844,11 @@ const SKY_INSCATTER_FRAGMENT = /* glsl */ `
       vec3 tau = uRayleigh * (viewColumn.x + lightColumn.x)
         + vec3(uMie * (viewColumn.y + lightColumn.y));
       vec3 transmittance = exp(-tau);
+      // Under a low sun the air over the ground is lit by little but the
+      // single-scattered beam, which leaves a hard edge along the terminator
+      // from space; the ground's own light fades gradually there, so this does too.
+      float sunUp = dot(p, uSunDir) / max(length(p), 1e-6);
+      transmittance *= mix(1.0, smoothstep(-0.04, 0.3, sunUp), uFromSpace);
       sumR += density.x * transmittance * dt;
       sumM += density.y * transmittance * dt;
     }
@@ -1815,7 +1858,8 @@ const SKY_INSCATTER_FRAGMENT = /* glsl */ `
     // and evenly blue rather than a dim tint. Isotropic, and weighted the same
     // as the single-scattered Rayleigh light it came from.
     vec3 multiple = sumR * uRayleigh * 0.16;
-    vec3 colour = (sumR * uRayleigh * phaseR + sumM * uMie * phaseM * uMieTint + multiple)
+    // The gas is what washes a lit disc out; dust is meant to.
+    vec3 colour = ((sumR * uRayleigh * phaseR + multiple) * mix(1.0, 0.4, uFromSpace) + sumM * uMie * mieColour)
       * uSunColour * min(uSunIntensity, 2.4) * uBrightness;
     if (uOvercast > 0.0) {
       // Light diffused through the deck: brightest under the hidden sun, dimming
@@ -2033,6 +2077,16 @@ export class Planet {
         uTerrain: { value: spec.terrain ?? 0 },
         uOceanRelief: { value: spec.oceanReliefKm ?? 0 },
         uLandRelief: { value: spec.landReliefKm ?? 0 },
+        uErosion: { value: spec.erosion ?? 0 },
+        uErosionFreq: { value: spec.erosionFreq ?? 400 },
+        // Down to wavelengths of about two metres: a unit direction in single
+        // float only places a point to a tenth of a metre on a moon, and the
+        // ground detail layer, which counts metres exactly, carries on below.
+        uErosionOctaves: {
+          value: Math.max(Math.log2(this.radius / (spec.erosionFreq ?? 400) / 0.002), 0),
+        },
+        uHighlandMap: { value: null },
+        uHighlandSplit: { value: 0 },
         uTerrace: { value: spec.terrace ?? 0 },
         uTerraceKm: { value: spec.terraceKm ?? 0.3 },
         uMacroRelief: {
@@ -2113,6 +2167,7 @@ export class Planet {
           value: spec.rockDensity
             ?? ((spec.banding ?? 0) > 0 || this.radius > 20000 ? 0 : spec.atmosphere ? 0.3 : 0.6),
         },
+        uStones: { value: spec.stones ?? 1 },
       },
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
@@ -2226,7 +2281,9 @@ export class Planet {
     // Aerosol sits far lower than the gas — on Earth about 1.2 km against 8.5.
     // Keeping it low is what holds the white glare down onto the horizon rather
     // than letting it wash the whole dome grey.
-    const mieHeightKm = scaleHeightKm / 7;
+    // Dust lofted by wind is mixed through the whole column instead, so a dusty
+    // world says how deep its aerosol is and how high it reaches.
+    const mieHeightKm = scaleHeightKm * (air.aerosolHeight ?? 1 / 7);
     const tint = air.tint ?? [0.35, 0.55, 1];
     const peak = Math.max(tint[0], tint[1], tint[2]) || 1;
     const zenith = 0.14 * air.density;
@@ -2245,7 +2302,7 @@ export class Planet {
         ),
       },
       // Clear-air aerosol: an optical depth of a few hundredths straight up.
-      uMie: { value: (0.02 * air.density) / mieHeightKm },
+      uMie: { value: (air.aerosol ?? 0.02 * air.density) / mieHeightKm },
       uMieG: { value: air.mieG ?? 0.76 },
       uScaleHeight: { value: scaleHeightKm },
       uMieHeight: { value: mieHeightKm },
@@ -2288,6 +2345,9 @@ export class Planet {
         // the sky in range beneath it.
         uBrightness: { value: air.skyBrightness ?? 5 },
         uMieTint: { value: new Color(...(air.mieTint ?? [1, 1, 1])) },
+        uDustTint: { value: new Color(...(air.dustTint ?? [1, 1, 1])) },
+        uDustBroad: { value: air.dustBroad ?? 0 },
+        uFromSpace: { value: 0 },
       },
       vertexShader: SKY_VERTEX,
       fragmentShader: SKY_INSCATTER_FRAGMENT,
@@ -2315,8 +2375,13 @@ export class Planet {
   }
 
   setColourMap(texture) {
-    this.material.uniforms.uColourMap.value = texture;
-    this.material.uniforms.uHasColourMap.value = texture ? 1 : 0;
+    const u = this.material.uniforms;
+    u.uColourMap.value = texture;
+    u.uHasColourMap.value = texture ? 1 : 0;
+    // Until the map arrives the relief is spread evenly rather than read off a
+    // blank texture as all lowland.
+    u.uHighlandMap.value = texture;
+    u.uHighlandSplit.value = texture ? this.spec.highlandSplit ?? 0 : 0;
   }
 
   setNightMap(texture) {
@@ -2609,8 +2674,18 @@ export class Planet {
       // outside it and the sky is the view from within, and they are two
       // renderings of the same column of gas.
       const inside = cameraLocal.length() < a.uShellRadius.value;
-      this.atmosphere.visible = !inside;
-      this.sky.visible = inside;
+      // A closed deck is seen from above as its own cloud tops, which the
+      // surface shader draws; the column model would fog it into a flat disc.
+      const skyFromSpace = !(spec.atmosphere.overcast > 0);
+      this.atmosphere.visible = !inside && !skyFromSpace;
+      this.sky.visible = inside || skyFromSpace;
+      // From outside, the near face of the shell is in front of everything on
+      // the disc, so it can be depth tested and a craft passing in front of the
+      // planet keeps its own colours. From inside there is no near face.
+      for (const material of [this.skyExtinctionMaterial, this.skyInscatterMaterial]) {
+        material.side = inside ? BackSide : FrontSide;
+        material.depthTest = !inside;
+      }
       // How much a lit sky overhead drowns out the stars, for the star field to
       // fade by: nothing at night or from above the air, almost everything under
       // Earth's noon sky, less under a thin one like Mars'.
@@ -2631,7 +2706,7 @@ export class Planet {
         const thickness = Math.max(a.uShellRadius.value - this.radius, 1e-3);
         u.uOvercastSeen.value = clamp((alt / thickness - 0.25) / 0.35, 0, 1);
       }
-      if (inside) {
+      {
         const s = this.skyUniforms;
         s.uCameraLocal.value.copy(cameraLocal);
         s.uSunDir.value.copy(sunLocal);
@@ -2640,6 +2715,9 @@ export class Planet {
         const fade = clamp(1 - distance / Math.max(Math.abs(groundKm) * 100, 1), 0, 1);
         s.uGroundKm.value = groundKm * fade;
         const light = this.skyInscatterMaterial.uniforms;
+        const thickness = Math.max(a.uShellRadius.value - this.radius, 1e-3);
+        const above = clamp((distance / thickness - 0.3) / 0.7, 0, 1);
+        light.uFromSpace.value = above * above * (3 - 2 * above);
         if (sunColour) light.uSunColour.value.copy(sunColour);
         if (sunIntensity !== undefined) light.uSunIntensity.value = sunIntensity;
       }

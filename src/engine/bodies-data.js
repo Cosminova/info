@@ -101,14 +101,18 @@ export const BODIES = [
     orbitKm: 384400,
     orbitDays: 27.321661,
     orbitInclDeg: 5.145,
-    // Real LOLA topography carries everything down to about 1.3 km; procedural
-    // craters take over below that.
+    // Real LOLA topography carries everything down to about 1.3 km. Below that
+    // the highlands are worn relief rather than stamped craters, and the maria,
+    // picked out by their measured albedo, stay the smooth plains they are.
     dem: true,
     craterFreq: 1300,
-    craterOctaves: 6,
-    craterDepth: 0.2,
-    craterDensity: 0.6,
-    roughness: 0.06,
+    craterOctaves: 0,
+    roughness: 0,
+    microDetail: 0,
+    erosion: 0.12,
+    erosionFreq: 500,
+    highlandSplit: 0.2,
+    stones: 0,
     photometry: 1,
     albedoBoost: 1.0,
   },
@@ -133,7 +137,10 @@ export const BODIES = [
     // stand in for it: the shape of the glow — a pale blue lobe hugging the sun,
     // the opposite way round from Earth — comes out of the scattering either
     // way, and only its brightness is being made up.
-    atmosphere: { height: 0.008, density: 0.5, tint: [0.85, 0.62, 0.45], skyBrightness: 9, mieTint: [0.35, 0.62, 1.25], mieG: 0.86 },
+    // Suspended dust: an optical depth around a third straight up on a clear
+    // day, mixed through the whole column, and the reason the disc looks soft
+    // from orbit rather than printed.
+    atmosphere: { height: 0.008, density: 0.5, tint: [0.85, 0.62, 0.45], skyBrightness: 9, mieTint: [0.35, 0.62, 1.25], mieG: 0.86, aerosol: 0.3, aerosolHeight: 1, dustTint: [1.0, 0.7, 0.45], dustBroad: 0.65 },
   },
   {
     key: 'jupiter',

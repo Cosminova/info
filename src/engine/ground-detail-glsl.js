@@ -18,6 +18,9 @@ export const GROUND_DETAIL_GLSL = /* glsl */ `
   uniform ivec3 uDetailCell;
   uniform vec3 uDetailFrac;
   uniform float uRockDensity;
+  // Stones on top of the soil, separately from the soil itself, which every
+  // world with ground keeps.
+  uniform float uStones;
 
   // Lattice of 2^k metres: integer cell base and position within it.
   void detailLattice(int k, vec3 metres, out ivec3 base, out vec3 q) {
@@ -151,25 +154,25 @@ export const GROUND_DETAIL_GLSL = /* glsl */ `
     detailLattice(5, metres, base, q);
     float field = clamp(0.55 + detailNoise(base, q).x * 0.9, 0.08, 1.4);
 
-    float wBoulder = weight * (1.0 - smoothstep(1.0, 3.5, fp));
+    float wBoulder = weight * uStones * (1.0 - smoothstep(1.0, 3.5, fp));
     if (wBoulder > 0.001) {
       float s = 1.0;
       slope += rockField(3, metres, uRockDensity * 0.12 * field, sunTan, sunCot, rockMask, tone, s) * wBoulder;
       shade *= mix(1.0, s, wBoulder);
     }
-    float wStone = weight * (1.0 - smoothstep(0.3, 1.0, fp));
+    float wStone = weight * uStones * (1.0 - smoothstep(0.3, 1.0, fp));
     if (wStone > 0.001) {
       float s = 1.0;
       slope += rockField(1, metres, uRockDensity * 0.3 * field, sunTan, sunCot, rockMask, tone, s) * wStone;
       shade *= mix(1.0, s, wStone);
     }
-    float wRock = weight * (1.0 - smoothstep(0.08, 0.28, fp));
+    float wRock = weight * uStones * (1.0 - smoothstep(0.08, 0.28, fp));
     if (wRock > 0.001) {
       float s = 1.0;
       slope += rockField(-1, metres, uRockDensity * 0.5 * field, sunTan, sunCot, rockMask, tone, s) * wRock;
       shade *= mix(1.0, s, wRock);
     }
-    float wPebble = weight * (1.0 - smoothstep(0.02, 0.07, fp));
+    float wPebble = weight * uStones * (1.0 - smoothstep(0.02, 0.07, fp));
     if (wPebble > 0.001) {
       float s = 1.0;
       slope += rockField(-3, metres, uRockDensity * 0.8, sunTan, sunCot, rockMask, tone, s) * wPebble * 0.8;

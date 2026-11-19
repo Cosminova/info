@@ -222,6 +222,43 @@ export const TERRAIN_GLSL = /* glsl */ `
     return sum;
   }
 
+  /**
+   * Ridged relief that looks worn down: each octave's ridges are squared so
+   * crests are sharp and troughs broad, and every octave is damped by the
+   * slope the coarser ones have already built. Steep flanks stay smooth and
+   * long, the way debris sheds off them, while the detail gathers on crests
+   * and valley floors. That damping is what reads as erosion; plain ridged
+   * noise is equally busy everywhere and looks like crumpled foil.
+   *
+   * octaves may be fractional: the last one fades in, so detail arrives with
+   * descent instead of popping. The gradient ignores the damping's own
+   * derivative, which is a small error on the lighting and not on the shape.
+   */
+  vec4 erodedd(vec3 p, float octaves, float gain, float damping) {
+    vec4 sum = vec4(0.0);
+    vec3 built = vec3(0.0);
+    float amp = 0.5;
+    float freq = 1.0;
+    mat3 rot = mat3(0.00, 0.80, 0.60, -0.80, 0.36, -0.48, -0.60, -0.48, 0.64);
+    mat3 accum = mat3(1.0);
+    for (int i = 0; i < 14; i++) {
+      float w = clamp(octaves - float(i), 0.0, 1.0);
+      if (w <= 0.0) break;
+      vec4 n = noised(p * freq);
+      float r1 = 1.0 - abs(n.x);
+      vec3 dr = 2.0 * r1 * -sign(n.x) * (accum * n.yzw) * freq;
+      float damp = 1.0 / (1.0 + dot(built, built) * damping);
+      sum.x += amp * (r1 * r1 - 0.42) * damp * w;
+      sum.yzw += amp * dr * damp * w;
+      built += amp * dr * w;
+      accum = rot * accum;
+      p = rot * p;
+      freq *= 2.0;
+      amp *= gain;
+    }
+    return sum;
+  }
+
   // --- crater profile -------------------------------------------------------
 
   // Smooth min/max carrying derivatives. vec4 in, vec4 out: (value, gradient).

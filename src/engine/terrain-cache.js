@@ -326,9 +326,9 @@ export class TerrainCache {
     this._dir = new Vector3();
   }
 
-  /** Which bodies the bake can stand in for: dry, cratered, and nothing it does not store. */
+  /** Which bodies the bake can stand in for: dry, cratered or worn, and nothing it does not store. */
   static suits(spec, uniforms) {
-    return (spec.craterOctaves ?? 0) > 0 &&
+    return ((spec.craterOctaves ?? 0) > 0 || (spec.erosion ?? 0) > 0) &&
       !(uniforms.uSeaLevelKm.value > 0) &&
       !(uniforms.uHasOcean?.value > 0.5) &&
       !(uniforms.uFractureDepth?.value > 0.001) &&
@@ -423,6 +423,7 @@ export class TerrainCache {
       s.uCraterOctaves.value, s.uCraterDepth.value, s.uCraterDensity.value, s.uRoughness.value,
       s.uDemStrength.value, s.uHasDem.value, s.uSurfaceSeed.value, s.uMacroRelief.value,
       s.uBasinDepth.value, s.uCraterFreq.value, s.uDemMap.value?.uuid ?? '',
+      s.uErosion.value, s.uErosionFreq.value, s.uHighlandSplit.value, s.uHighlandMap.value?.uuid ?? '',
       dem[0], dem[1], dem[2], dem[3],
     ].join('|');
   }
