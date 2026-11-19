@@ -1,12 +1,14 @@
 import {
   AddEquation,
   AdditiveBlending,
+  AlwaysStencilFunc,
   BackSide,
   BufferAttribute,
   BufferGeometry,
   Camera,
   Color,
   CustomBlending,
+  EqualStencilFunc,
   FloatType,
   FrontSide,
   Group,
@@ -14,7 +16,10 @@ import {
   Matrix4,
   Mesh,
   NearestFilter,
+  KeepStencilOp,
+  NotEqualStencilFunc,
   Points,
+  ReplaceStencilOp,
   RGBAFormat,
   Scene,
   ShaderMaterial,
@@ -1715,6 +1720,10 @@ const SKY_COMMON = /* glsl */ `
   // stars and sun are gone and the dome is one diffuse glow.
   uniform float uOvercast;
   uniform vec3 uDeckTint;
+  // 1 in the pass drawn over this body's own ground, 0 over everything else.
+  uniform float uOnGround;
+  // How far the land rises above the ground under the camera.
+  uniform float uReliefKm;
 
   varying vec3 vLocal;
   bool gSkyward;
@@ -1779,6 +1788,17 @@ const SKY_COMMON = /* glsl */ `
       // ground with no seam where the ray stops hitting the sphere above.
       vec2 base = sphereSpan(origin, ray, uRadius);
       if (base.x > 0.0 && base.y > base.x) far = min(far, max(-dot(origin, ray), near));
+    }
+    if (uOnGround > 0.5 && gSkyward) {
+      // Ground seen above the horizon is a ridge further off, and the ray has
+      // met it by the time it climbs above the highest land. Run on to the top
+      // of the air instead and the ridge takes the whole sky's colour, a flat
+      // pale wall standing on the horizon.
+      vec2 top = sphereSpan(origin, ray, uRadius + max(uGroundKm, 0.0) + uReliefKm);
+      if (top.x <= 0.0 && top.y > near) {
+        far = min(far, top.y);
+        gSkyward = false;
+      }
     }
     len = far - near;
     return len > 1e-6;
@@ -2009,6 +2029,8 @@ function groundProbe() {
   return probeState;
 }
 
+let nextStencilRef = 0;
+
 export class Planet {
   /**
    * @param {object} spec see BODIES in bodies-data.js
@@ -2022,6 +2044,9 @@ export class Planet {
     // outer group can stay aligned with the camera-relative world.
     this.spin = new Group();
     this.group.add(this.spin);
+    // A stencil value of its own, so a sky only treats its own planet's ground
+    // as ground and still hazes a moon or a neighbour seen through it.
+    this.stencilRef = (nextStencilRef++ % 255) + 1;
 
     this.sphere = new CubeSphere({
       resolution: spec.patchResolution ?? 24,
@@ -2216,6 +2241,12 @@ export class Planet {
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
       side: FrontSide,
+      // Marks the pixels that are this body's ground, so its sky can tell a
+      // ridge standing above the horizon from open sky: see the sky's ground pass.
+      stencilWrite: true,
+      stencilRef: this.stencilRef,
+      stencilFunc: AlwaysStencilFunc,
+      stencilZPass: ReplaceStencilOp,
     });
 
     this.mesh = new Mesh(this.sphere.geometry, this.material);
@@ -2352,6 +2383,8 @@ export class Planet {
       uMieHeight: { value: mieHeightKm },
       uOvercast: { value: air.overcast ?? 0 },
       uDeckTint: { value: new Color(...tint.map((c) => c / peak)) },
+      uOnGround: { value: 0 },
+      uReliefKm: { value: Math.min(3, this.radius * 0.02) },
     };
 
     this.skyUniforms = uniforms;
@@ -2402,10 +2435,36 @@ export class Planet {
       depthTest: false,
     });
 
+    // Each pass twice: once over open sky and everything else, once over this
+    // body's own ground, which ends its rays at the land instead of the top of
+    // the air. The ground's stencil mark is what tells the two apart.
+    const overGround = (material) => {
+      const copy = material.clone();
+      copy.uniforms = { ...material.uniforms, uOnGround: { value: 1 } };
+      copy.stencilFunc = EqualStencilFunc;
+      return copy;
+    };
+    this.skyExtinctionGround = overGround(this.skyExtinctionMaterial);
+    this.skyInscatterGround = overGround(this.skyInscatterMaterial);
+    for (const material of [this.skyExtinctionMaterial, this.skyInscatterMaterial]) {
+      material.stencilFunc = NotEqualStencilFunc;
+    }
+    this.skyMaterials = [
+      this.skyExtinctionMaterial, this.skyExtinctionGround,
+      this.skyInscatterMaterial, this.skyInscatterGround,
+    ];
+    for (const material of this.skyMaterials) {
+      material.stencilWrite = true;
+      material.stencilRef = this.stencilRef;
+      material.stencilZPass = KeepStencilOp;
+    }
+
     this.sky = new Group();
     for (const [material, order] of [
       [this.skyExtinctionMaterial, 6],
+      [this.skyExtinctionGround, 6],
       [this.skyInscatterMaterial, 7],
+      [this.skyInscatterGround, 7],
     ]) {
       const mesh = new Mesh(geometry, material);
       mesh.scale.set(1, 1 - (spec.flattening ?? 0), 1);
@@ -2726,7 +2785,7 @@ export class Planet {
       // From outside, the near face of the shell is in front of everything on
       // the disc, so it can be depth tested and a craft passing in front of the
       // planet keeps its own colours. From inside there is no near face.
-      for (const material of [this.skyExtinctionMaterial, this.skyInscatterMaterial]) {
+      for (const material of this.skyMaterials) {
         material.side = inside ? BackSide : FrontSide;
         material.depthTest = !inside;
       }
@@ -2771,6 +2830,8 @@ export class Planet {
     // taken back through the figure's squash first: otherwise, near the pole of a
     // flattened world, the ground underfoot looks kilometres away and never refines.
     const scaled = this._cameraLocal.copy(cameraLocal).divide(u.uAxisScale.value).divideScalar(this.radius);
+    this.sphere.cullRadius = 1 + groundKm / this.radius;
+    this.sphere.cullRelief = Math.min(12, this.radius * 0.05) / this.radius;
     return this.sphere.update(scaled, pixelsPerRadian, viewLocal ?? null, coneCos ?? -1);
   }
 }

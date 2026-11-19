@@ -2204,12 +2204,24 @@ function veilSky(day) {
  * synchronous read every frame stalls the whole pipeline while it does.
  */
 /**
- * On foot the mesh under you holds its full detail whatever the frame rate:
- * its vertex spacing sets how high the ground is drawn, and letting quality
- * coarsen it lifted and lowered a walker standing still by a metre and more.
+ * On foot the mesh under you only changes detail while you are moving: its
+ * vertex spacing sets how high the ground is drawn, and letting quality coarsen
+ * it under a walker standing still lifted and lowered them by a metre and more.
+ * Held at full detail it never gave the frame rate back, so it follows quality
+ * on the move, where a step in the ground is lost in the walking.
  */
-function walkingDetail() {
-  return controls.mode === 'walk' ? 1 : null;
+const walkDetail = { on: false, detail: 1, patch: 1 };
+function walkingDetail(which) {
+  if (controls.mode !== 'walk') {
+    walkDetail.on = false;
+    return null;
+  }
+  if (!walkDetail.on || controls.walkVelocity > 0 || controls.descending) {
+    walkDetail.on = true;
+    walkDetail.detail = quality.terrainDetail;
+    walkDetail.patch = quality.patchScale;
+  }
+  return which === 'patch' ? walkDetail.patch : walkDetail.detail;
 }
 
 const walkProbe = { key: null, dirs: Array.from({ length: 15 }, () => new Vector3()), km: null, at: 0, last: 0, dir: new Vector3() };
@@ -3372,7 +3384,6 @@ function frame(now) {
     tmpViewLocal.copy(tmpViewDir).applyQuaternion(inverse).normalize();
     const sunDistanceAu = bodyState.position.distanceTo(sunState.position) / 149597870.7;
     const irradiance = 1 / Math.max(sunDistanceAu * sunDistanceAu, 1e-6);
-    const nearbyGiant = planet.radius / distance > 0.04;
     const sunDistKm = bodyState.position.distanceTo(sunState.position);
     const sunAngular = SUN.radiusKm / Math.max(sunDistKm, 1);
     let occluder;
@@ -3464,12 +3475,12 @@ function frame(now) {
       sunLocal: tmpSunLocal,
       pixelsPerRadian,
       detailScale: walkingDetail() ?? quality.terrainDetail,
-      patchScale: walkingDetail() ?? quality.patchScale,
+      patchScale: walkingDetail('patch') ?? quality.patchScale,
       microDetail: quality.microDetail,
       sunColour,
       sunIntensity: irradiance * exposureScale,
-      viewLocal: nearbyGiant ? null : tmpViewLocal,
-      coneCos: nearbyGiant ? -1 : coneCos,
+      viewLocal: tmpViewLocal,
+      coneCos,
       occluder,
       occluder2,
       umbraLight,
@@ -3608,21 +3619,17 @@ function frame(now) {
       tmpSunLocal.copy(item.local).negate().normalize();
       tmpViewLocal.copy(tmpViewDir).normalize();
       const au = item.spec.orbitKm / 149597870.7;
-      // As at home: close in, the patch under the camera has its centre well
-      // outside the view cone however much of the screen it fills, and culling
-      // by cone drops the ground you are standing on.
-      const close = item.spec.radiusKm / distance > 0.04;
       patchTotal += item.planet.update({
         cameraLocal: tmpCameraLocal,
         sunLocal: tmpSunLocal.copy(tmpSunLocal),
         pixelsPerRadian,
         detailScale: walkingDetail() ?? quality.terrainDetail,
-        patchScale: walkingDetail() ?? quality.patchScale,
+        patchScale: walkingDetail('patch') ?? quality.patchScale,
         microDetail: quality.microDetail,
         sunColour,
         sunIntensity: exoSunIntensity(exoFlux(hostLum, au), exoReference, state.exposure),
-        viewLocal: close ? null : tmpViewLocal,
-        coneCos: close ? -1 : coneCos,
+        viewLocal: tmpViewLocal,
+        coneCos,
         groundKm: cameraGround.key === item.spec.key ? cameraGround.km : 0,
       });
       if (item.rings) {
@@ -3649,7 +3656,7 @@ function frame(now) {
         sunLocal: tmpSunLocal,
         pixelsPerRadian,
         detailScale: walkingDetail() ?? quality.terrainDetail,
-        patchScale: walkingDetail() ?? quality.patchScale,
+        patchScale: walkingDetail('patch') ?? quality.patchScale,
         microDetail: quality.microDetail,
         sunColour,
         sunIntensity: exoSunIntensity(exoFlux(hostLum, au), exoReference, state.exposure),

@@ -155,6 +155,13 @@ export class CubeSphere {
     this.maxLevel = maxLevel;
     this.maxPatches = maxPatches;
     this.pixelsPerQuad = pixelsPerQuad;
+    /** Exponent on the cosine of the viewing angle in the split test; 0 is face-on. */
+    this.grazingWeight = 0.5;
+    this.grazingFloor = 0.1;
+    /** Radius, in body radii, of the ground the view cone is tested against. */
+    this.cullRadius = 1;
+    /** Height of relief allowed for above and below that ground, body radii. */
+    this.cullRelief = 0;
 
     this.geometry = buildPatchGeometry(this.resolution);
     this.origins = new Float32Array(maxPatches * 3);
@@ -367,14 +374,22 @@ export class CubeSphere {
     // altitude nearly all of it is behind the camera: the patch budget is spent
     // out of sight and the ground actually in view is left coarse.
     if (this._viewDir && this._coneCos > -1) {
-      const dx = centre.x - cameraLocal.x;
-      const dy = centre.y - cameraLocal.y;
-      const dz = centre.z - cameraLocal.z;
-      const along = (dx * this._viewDir.x + dy * this._viewDir.y + dz * this._viewDir.z) / distance;
-      // Allow for the patch's own extent: it can straddle the cone edge.
-      const slack = Math.min(edge / distance, 3.0);
-      if (along < this._coneCos * Math.sqrt(Math.max(0, 1 - Math.min(slack, 1) ** 2)) -
-                  this._coneSin * Math.min(slack, 1)) {
+      // Tested where the ground is, not on the reference sphere: standing on a
+      // plateau the reference point under a patch is far below the surface you
+      // see, in a direction off screen, and the ground in view was culled.
+      const k = this.cullRadius;
+      const dx = centre.x * k - cameraLocal.x;
+      const dy = centre.y * k - cameraLocal.y;
+      const dz = centre.z * k - cameraLocal.z;
+      const reach = Math.max(Math.hypot(dx, dy, dz), 1e-9);
+      const along = (dx * this._viewDir.x + dy * this._viewDir.y + dz * this._viewDir.z) / reach;
+      // Allow for the patch's own extent, since it can straddle the cone edge,
+      // and for relief standing above or sinking below the local ground.
+      const relief = Math.min(this.cullRelief, reach * 0.08);
+      const slack = Math.min((edge * k + relief) / reach, 3.0);
+      // Inside the patch's bounds every direction sees some of it, and the
+      // patch being stood on has to survive to be split into the ground underfoot.
+      if (slack < 1 && along < this._coneCos * Math.sqrt(1 - slack * slack) - this._coneSin * slack) {
         return;
       }
     }
@@ -392,8 +407,20 @@ export class CubeSphere {
     this._nUp[i3 + 2] = uz;
     this._nLevel[node] = level;
     this._nMorph[node] = morph;
-    // Screen-space error: patch edge length over distance, in pixels.
-    this._nError[node] = (edge / distance) * this._pixelsPerRadian;
+    // Screen-space error: patch edge length over distance, in pixels. Ground
+    // seen edge-on covers that many pixels across but far fewer up the screen,
+    // and splitting it as if seen face-on spends most of a low camera's budget
+    // on strips towards the horizon. Only part of the foreshortening is taken
+    // off, because a far ridge's outline is drawn by the samples along the view.
+    let error = (edge / distance) * this._pixelsPerRadian;
+    // The patch underfoot and its neighbours are seen edge-on too, but they are
+    // what the walker stands on, so they keep their full split.
+    if (this.grazingWeight > 0 && distance > edge * 3) {
+      const facing = (centre.x * (cameraLocal.x - centre.x) + centre.y * (cameraLocal.y - centre.y)
+        + centre.z * (cameraLocal.z - centre.z)) / distance;
+      error *= Math.max(Math.abs(facing), this.grazingFloor) ** this.grazingWeight;
+    }
+    this._nError[node] = error;
     this._heapPush(node);
   }
 
