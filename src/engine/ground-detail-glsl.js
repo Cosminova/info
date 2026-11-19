@@ -1,6 +1,7 @@
 /**
- * Ground detail at the scale of a person standing on it: boulders, rocks and
- * pebbles with the shadows they cast, and the grain of the soil between them.
+ * Ground detail at the scale of a person standing on it, from photo-scanned
+ * ground and rock (ambientCG, CC0; packed by scripts/build-ground-textures.py).
+ * Brightness and relief only: the colour stays the planet's own.
  *
  * Everything else in the terrain is built from the unit direction, which in
  * single float is good to about a ten-millionth of a radian — tens of
@@ -8,19 +9,73 @@
  * so this layer is built from metres counted from the render anchor instead:
  * an integer cell (`uDetailCell`, exact) plus a fractional remainder
  * (`uDetailFrac`), with the fragment's own offset added to the remainder only.
- * Every lattice below is a power of two metres, so the integer part can be
- * carried into each one by shifting, and the pattern a point gets does not
- * depend on where the anchor happens to be.
+ * The textures are laid on a 1024 m block taken from the integer part by a
+ * shift, and every scale repeats a whole number of times across it, so the
+ * pattern a point gets does not depend on where the anchor happens to be.
  *
- * Depends on pcg3d from the terrain chunk.
+ * The caller passes metres with the land's height taken out, so the pattern
+ * sits on the point's place on the map and not on how high the mesh under the
+ * current level of detail puts it there.
  */
+import {
+  DataTexture,
+  LinearFilter,
+  LinearMipmapLinearFilter,
+  NoColorSpace,
+  RepeatWrapping,
+  TextureLoader,
+} from 'three';
+
+const flat = () => {
+  const texture = new DataTexture(new Uint8Array([128, 128, 128, 128]), 1, 1);
+  texture.needsUpdate = true;
+  return texture;
+};
+const placeholder = { tone: flat(), normal: flat() };
+const waiting = [];
+let loaded = null;
+
+function loadAll() {
+  loaded = {};
+  const loader = new TextureLoader();
+  for (const kind of ['tone', 'normal']) {
+    loader.load(`textures/ground/ground-${kind}.webp`, (texture) => {
+      texture.wrapS = texture.wrapT = RepeatWrapping;
+      texture.colorSpace = NoColorSpace;
+      texture.minFilter = LinearMipmapLinearFilter;
+      texture.magFilter = LinearFilter;
+      texture.anisotropy = 8;
+      loaded[kind] = texture;
+      for (const uniforms of waiting) uniforms[kind === 'tone' ? 'uGroundTone' : 'uGroundNormal'].value = texture;
+    });
+  }
+}
+
+/** Uniforms for the ground textures: a flat stand-in until the photos arrive. */
+export function groundTextureUniforms() {
+  if (!loaded) loadAll();
+  const uniforms = {
+    uGroundTone: { value: loaded.tone ?? placeholder.tone },
+    uGroundNormal: { value: loaded.normal ?? placeholder.normal },
+  };
+  waiting.push(uniforms);
+  return uniforms;
+}
+
 export const GROUND_DETAIL_GLSL = /* glsl */ `
   uniform ivec3 uDetailCell;
   uniform vec3 uDetailFrac;
   uniform float uRockDensity;
-  // Stones on top of the soil, separately from the soil itself, which every
-  // world with ground keeps.
+  // How stony the soil is, for worlds of fine dust or ice.
   uniform float uStones;
+  // Rows: the ground plane's along, across and up, in the body frame.
+  uniform mat3 uMapBasis;
+  // The render anchor's place on that plane, metres, wrapped to 1024.
+  uniform vec3 uMapFrac;
+  // R ground tone, G rock tone, B ground height, A rock height.
+  uniform sampler2D uGroundTone;
+  // RG ground normal, BA rock normal.
+  uniform sampler2D uGroundNormal;
 
   // Lattice of 2^k metres: integer cell base and position within it.
   void detailLattice(int k, vec3 metres, out ivec3 base, out vec3 q) {
@@ -34,185 +89,111 @@ export const GROUND_DETAIL_GLSL = /* glsl */ `
     }
   }
 
-  float detailHash(ivec3 c) {
-    return float(pcg3d(uvec3(c)).x) * (1.0 / 4294967296.0);
+  // One scale of both materials, projected along whichever body axes face
+  // the ground. Returns ground tone, ground height, rock tone, rock height,
+  // and the two materials' slopes, rise over run in the body frame.
+  // A tile repeated across open ground shows as a grid. Each tile instead
+  // takes one of eight offsets, picked by a slowly wandering value and
+  // cross-faded where it changes, with the gradients of the unshifted
+  // coordinates so the fade does not show as a seam in the mip level.
+  void unrepeated(vec2 uv, float pick, out vec4 tone, out vec4 nrm) {
+    vec2 dx = dFdx(uv), dy = dFdy(uv);
+    float l = pick * 8.0;
+    float ia = floor(l);
+    float f = fract(l);
+    vec2 offA = sin(vec2(3.0, 7.0) * ia);
+    vec2 offB = sin(vec2(3.0, 7.0) * (ia + 1.0));
+    vec4 toneA = textureGrad(uGroundTone, uv + offA, dx, dy);
+    vec4 toneB = textureGrad(uGroundTone, uv + offB, dx, dy);
+    float blend = smoothstep(0.2, 0.8, f - 0.3 * (toneA.b - toneB.b));
+    tone = mix(toneA, toneB, blend);
+    nrm = mix(textureGrad(uGroundNormal, uv + offA, dx, dy), textureGrad(uGroundNormal, uv + offB, dx, dy), blend);
   }
 
-  // Value noise with gradient, as noised() but on the split lattice.
-  vec4 detailNoise(ivec3 base, vec3 q) {
-    vec3 i = floor(q);
-    vec3 f = q - i;
-    ivec3 c = base + ivec3(i);
-    vec3 u = f * f * f * (f * (f * 6.0 - 15.0) + 10.0);
-    vec3 du = 30.0 * f * f * (f * (f - 2.0) + 1.0);
-    float a = detailHash(c);
-    float b = detailHash(c + ivec3(1, 0, 0));
-    float cc = detailHash(c + ivec3(0, 1, 0));
-    float d = detailHash(c + ivec3(1, 1, 0));
-    float e = detailHash(c + ivec3(0, 0, 1));
-    float g = detailHash(c + ivec3(1, 0, 1));
-    float h = detailHash(c + ivec3(0, 1, 1));
-    float j = detailHash(c + ivec3(1, 1, 1));
-    float k1 = b - a, k2 = cc - a, k3 = e - a;
-    float k4 = a - b - cc + d, k5 = a - cc - e + h, k6 = a - b - e + g;
-    float k7 = -a + b + cc - d + e - g - h + j;
-    float value = a + k1 * u.x + k2 * u.y + k3 * u.z
-      + k4 * u.x * u.y + k5 * u.y * u.z + k6 * u.z * u.x + k7 * u.x * u.y * u.z;
-    vec3 grad = du * vec3(
-      k1 + k4 * u.y + k6 * u.z + k7 * u.y * u.z,
-      k2 + k5 * u.z + k4 * u.x + k7 * u.z * u.x,
-      k3 + k6 * u.x + k5 * u.y + k7 * u.x * u.y);
-    return vec4(value * 2.0 - 1.0, grad * 2.0);
-  }
-
-  /**
-   * One field of rocks on a 2^k metre lattice. Each cell may hold a rock: a
-   * sphere seated in the ground, so the ground cuts it at a different height
-   * every time and no two outlines match. Returns the slope it adds (rise over
-   * run), and through the out parameters how much of this point is rock, how
-   * dark it is, and whether a rock stands between it and the sun.
-   */
-  vec3 rockField(
-    int k, vec3 metres, float density, vec3 sunTan, float sunCot,
-    inout float rockMask, inout float tone, inout float shade
-  ) {
-    ivec3 base;
-    vec3 q;
-    detailLattice(k, metres, base, q);
-    vec3 i = floor(q);
-    vec3 f = q - i;
-    ivec3 o = ivec3(step(0.5, f)) - 1;
-    float best = 0.0;
-    vec3 slope = vec3(0.0);
-    for (int n = 0; n < 8; n++) {
-      ivec3 offset = o + ivec3(n & 1, (n >> 1) & 1, (n >> 2) & 1);
-      uvec3 h = pcg3d(uvec3(base + ivec3(i) + offset));
-      const float inv16 = 1.0 / 65536.0;
-      if (float(h.x & 0xffffu) * inv16 > density) continue;
-      vec3 centre = vec3(offset) + vec3(float(h.x >> 16u), float(h.y & 0xffffu), float(h.y >> 16u)) * inv16 * 0.6 + 0.2;
-      float radius = mix(0.12, 0.44, pow(float(h.z & 0xffffu) * inv16, 1.8));
-      vec3 d = f - centre;
-      // An irregular outline: the radius swells and pinches with direction,
-      // by a few lobes set from the hash, so no two stones are the same egg.
-      vec3 lobe = vec3(h.zyx & 0xffu) / 127.5 - 1.0;
-      vec3 dn = d / max(length(d), 1e-5);
-      float shapeMod = 1.0 + 0.28 * dot(dn, lobe) + 0.14 * sin(dot(dn, lobe.yzx) * 7.0 + lobe.z * 6.0);
-      float rr = radius * shapeMod;
-      float r2 = dot(d, d) / (rr * rr);
-      if (r2 < 1.0) {
-        // Squat, flat-topped and steep-sided: rocks settle and break, and a
-        // full hemisphere reads as a bubble.
-        float body = 1.0 - r2;
-        float lift = rr * 0.42;
-        float height = lift * min(body * 2.2, 1.0) * (0.75 + 0.25 * body);
-        if (height > best) {
-          best = height;
-          float edge = body * 2.2 < 1.0 ? 2.2 * (0.75 + 0.25 * body) + 0.25 * body * 2.2 : 0.25;
-          slope = -d * (lift * edge * 2.0 / (rr * rr));
-          rockMask = max(rockMask, smoothstep(1.0, 0.8, r2));
-          tone = mix(0.55, 1.15, float(h.z >> 16u) * inv16);
-        }
-      } else {
-        // Soil gathers in the angle at the foot of a rock, and the light does not.
-        shade *= 1.0 - 0.28 * smoothstep(1.9, 1.0, r2);
-        // Shadow: the ray to the sun from here passes over the rock if the
-        // segment of it short enough to clear the rock's height comes within
-        // the rock's outline.
-        float reach = rr * 0.42 * sunCot;
-        float t = clamp(dot(-d, sunTan), 0.0, reach);
-        vec3 nearest = d + sunTan * t;
-        float lit = smoothstep(rr * 0.7, rr * 1.02, length(nearest));
-        shade *= mix(1.0, lit, 0.82);
-      }
+  vec4 groundLayer(vec3 block, vec3 w, float tiles, out vec3 groundSlope, out vec3 rockSlope) {
+    // The wandering value: the soil's own height, blurred and spread over
+    // about nine tiles.
+    float pick = textureLod(uGroundTone, block.xy * tiles * 0.11 + 0.37, 3.0).b * 2.0;
+    vec4 tone = vec4(0.0);
+    groundSlope = vec3(0.0);
+    rockSlope = vec3(0.0);
+    for (int a = 0; a < 3; a++) {
+      float wa = a == 0 ? w.x : a == 1 ? w.y : w.z;
+      if (wa < 0.02) continue;
+      vec2 uv = (a == 0 ? block.yz : a == 1 ? block.zx : block.xy) * tiles;
+      vec4 t, n;
+      unrepeated(uv, pick, t, n);
+      n = n * 2.0 - 1.0;
+      tone += vec4(t.r, t.b, t.g, t.a) * wa;
+      vec2 g = -n.xy, r = -n.zw;
+      groundSlope += wa * (a == 0 ? vec3(0.0, g) : a == 1 ? vec3(g.y, 0.0, g.x) : vec3(g, 0.0));
+      rockSlope += wa * (a == 0 ? vec3(0.0, r) : a == 1 ? vec3(r.y, 0.0, r.x) : vec3(r, 0.0));
     }
-    return slope;
+    return tone;
+  }
+
+  float fadeBelow(float fp, float tileM) {
+    return 1.0 - smoothstep(tileM * 0.12, tileM * 0.4, fp);
   }
 
   /**
    * Adds the detail to a lit point: tilts the normal and returns the factor
-   * the albedo takes. fp is the pixel footprint in metres, which decides which
-   * scales are resolved here and fades the rest out before they can alias.
+   * the albedo takes. fp is the pixel footprint in metres; past a scale's own
+   * mip chain it has nothing left to add, so it is skipped there.
    */
-  float groundDetail(vec3 dir, vec3 metres, float fp, float weight, inout vec3 normal) {
-    vec3 sunTan = uSunDir - dir * dot(uSunDir, dir);
-    float sinE = dot(uSunDir, dir);
-    float cosE = length(sunTan);
-    sunTan = cosE > 1e-4 ? sunTan / cosE : vec3(0.0);
-    // Capped so a shadow stays inside the cells searched for the rock casting it.
-    float sunCot = clamp(cosE / max(sinE, 0.02), 0.0, 2.6);
-    if (sinE < 0.0) sunCot = 0.0;
+  float groundDetail(vec3 dir, vec3 rel, float heightM, float fp, float weight, inout vec3 normal) {
+    // Along, across and up on the map plane. Flat ground reads from the first
+    // two with the land's height taken out, so it sits on the point's place on
+    // the map and not on how high the current level of detail puts the mesh.
+    vec3 local = uMapBasis * rel;
+    vec2 across = local.xy - (uMapBasis * dir).xy * heightM;
+    vec3 block = (uMapFrac + vec3(across, local.z)) / 1024.0;
+    // Projections by how squarely each axis meets the surface, sharpened so
+    // most of the ground reads from one of them; cliffs from the side.
+    vec3 w = pow(abs(uMapBasis * normal), vec3(6.0));
+    w /= w.x + w.y + w.z;
 
-    float rockMask = 0.0;
-    float tone = 1.0;
-    float shade = 1.0;
-    vec3 slope = vec3(0.0);
+    // Bare rock on the steep ground and in outcrops between, broken up by
+    // the materials' own heights so the edge follows the stones.
+    float steep = 1.0 - clamp(dot(normal, dir), 0.0, 1.0);
+    float rockBias = smoothstep(0.08, 0.3, steep);
 
-    // Stones gather in fields and thin out between them, so the density
-    // itself wanders, on a lattice of 32 m.
-    ivec3 base;
-    vec3 q;
-    detailLattice(5, metres, base, q);
-    float field = clamp(0.55 + detailNoise(base, q).x * 0.9, 0.08, 1.4);
+    float groundFactor = 1.0;
+    float rockFactor = 1.0;
+    vec3 groundSlope = vec3(0.0);
+    vec3 rockSlope = vec3(0.0);
+    float groundH = 0.5, rockH = 0.5;
+    // Tiles per 1024 m: soil at its own size, 2 m, and again at 10.6 m for
+    // broad light and dark only, which breaks up the repeat without blowing
+    // the stones up to boulders; rock at 4 m, 28 m, 146 m and 512 m, the
+    // larger for the faces of mountains seen from far off.
+    const float SOIL[2] = float[2](512.0, 97.0);
+    const float ROCK[4] = float[4](256.0, 37.0, 7.0, 2.0);
+    float stony = mix(0.45, 1.0, uStones);
+    for (int i = 0; i < 2; i++) {
+      float f = fadeBelow(fp, 1024.0 / SOIL[i]) * weight;
+      if (f < 0.01) continue;
+      vec3 gs, rs;
+      vec4 t = groundLayer(block, w, SOIL[i], gs, rs);
+      groundFactor *= 1.0 + (t.x * 2.0 - 1.0) * f * stony * (i == 0 ? 1.0 : 0.35);
+      groundSlope += gs * f * stony * (i == 0 ? 0.6 : 0.12);
+      if (i == 0) groundH = mix(0.5, t.y, f);
+    }
+    for (int i = 0; i < 4; i++) {
+      float f = fadeBelow(fp, 1024.0 / ROCK[i]) * weight;
+      if (f < 0.01) continue;
+      vec3 gs, rs;
+      vec4 t = groundLayer(block, w, ROCK[i], gs, rs);
+      rockFactor *= 1.0 + (t.z * 2.0 - 1.0) * f * 0.8;
+      rockSlope += rs * f * (i == 0 ? 0.9 : 0.6);
+      if (i == 1) rockH = mix(0.5, t.w, f);
+    }
+    float rock = smoothstep(0.35, 0.65, rockBias + (rockH - groundH) * 0.6 - 0.1 + uRockDensity * 0.1);
 
-    float wBoulder = weight * uStones * (1.0 - smoothstep(1.0, 3.5, fp));
-    if (wBoulder > 0.001) {
-      float s = 1.0;
-      slope += rockField(3, metres, uRockDensity * 0.12 * field, sunTan, sunCot, rockMask, tone, s) * wBoulder;
-      shade *= mix(1.0, s, wBoulder);
-    }
-    float wStone = weight * uStones * (1.0 - smoothstep(0.3, 1.0, fp));
-    if (wStone > 0.001) {
-      float s = 1.0;
-      slope += rockField(1, metres, uRockDensity * 0.3 * field, sunTan, sunCot, rockMask, tone, s) * wStone;
-      shade *= mix(1.0, s, wStone);
-    }
-    float wRock = weight * uStones * (1.0 - smoothstep(0.08, 0.28, fp));
-    if (wRock > 0.001) {
-      float s = 1.0;
-      slope += rockField(-1, metres, uRockDensity * 0.5 * field, sunTan, sunCot, rockMask, tone, s) * wRock;
-      shade *= mix(1.0, s, wRock);
-    }
-    float wPebble = weight * uStones * (1.0 - smoothstep(0.02, 0.07, fp));
-    if (wPebble > 0.001) {
-      float s = 1.0;
-      slope += rockField(-3, metres, uRockDensity * 0.8, sunTan, sunCot, rockMask, tone, s) * wPebble * 0.8;
-      shade *= mix(1.0, s, wPebble * 0.8);
-    }
-
-    // Rough, fractured faces on the stones themselves.
-    if (rockMask > 0.01 && fp < 0.15) {
-      detailLattice(-3, metres, base, q);
-      slope += detailNoise(base, q).yzw * 0.09 * rockMask * (1.0 - smoothstep(0.04, 0.15, fp));
-    }
-
-    // The grain of the soil: two octaves at a few centimetres and a few
-    // decimetres, for the texture of the ground between the stones.
-    float grain = 0.0;
-    float wGrain = weight * (1.0 - smoothstep(0.03, 0.12, fp));
-    if (wGrain > 0.001) {
-      detailLattice(-1, metres, base, q);
-      vec4 coarse = detailNoise(base, q);
-      detailLattice(-4, metres, base, q);
-      vec4 fine = detailNoise(base, q);
-      slope += (coarse.yzw * 0.035 + fine.yzw * 0.02) * wGrain;
-      grain = (coarse.x * 0.6 + fine.x * 0.4) * wGrain;
-    }
-    // Ripples and drifts at the scale of a stride, and blotches of darker and
-    // lighter soil, wide enough to carry the texture out past the stones.
-    float patches = 0.0;
-    float wDrift = weight * (1.0 - smoothstep(1.0, 6.0, fp));
-    if (wDrift > 0.001) {
-      detailLattice(2, metres, base, q);
-      vec4 drift = detailNoise(base, q);
-      detailLattice(4, metres, base, q);
-      vec4 broad = detailNoise(base, q);
-      slope += (drift.yzw * 0.04 + broad.yzw * 0.03) * wDrift;
-      patches = (drift.x * 0.5 + broad.x * 0.5) * wDrift;
-    }
-
+    vec3 slope = transpose(uMapBasis) * mix(groundSlope, rockSlope, rock);
     vec3 tangential = slope - dot(slope, dir) * dir;
-    normal = normalize(normal - tangential);
-    float rockTone = mix(1.0, tone, rockMask);
-    return shade * rockTone * (1.0 + grain * 0.22) * (1.0 + patches * 0.18);
+    normal = normalize(normal - tangential * 0.8);
+    // Rock is a touch darker than the soil it sheds.
+    return mix(groundFactor, rockFactor * 0.85, rock);
   }
 `;

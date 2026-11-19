@@ -38,7 +38,7 @@ import { CubeSphere } from './cubesphere.js';
 import { hydrostaticAxes, isLocked, rotationalAxes } from './figures.js';
 import { bodyGeology } from './geology.js';
 import { SHADOW_GLSL } from './shadow-glsl.js';
-import { GROUND_DETAIL_GLSL } from './ground-detail-glsl.js';
+import { GROUND_DETAIL_GLSL, groundTextureUniforms } from './ground-detail-glsl.js';
 import { CRATER_DETAIL_MARGIN, CRATER_LACUNARITY, TERRAIN_GLSL } from './terrain-glsl.js';
 import { CACHE_GLSL, TerrainCache } from './terrain-cache.js';
 import { platform } from './platform.js';
@@ -48,6 +48,9 @@ const DEFAULT_MAX_PATCHES = 2400;
 
 /** Height above the ground under which the land's own distance sets its haze. */
 const LOW_HAZE_KM = 8;
+
+/** How far the ground textures' plane is carried before it is laid again. */
+const GROUND_MAP_REACH_KM = 150;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const smoothstep = (a, b, x) => {
@@ -410,7 +413,9 @@ const RELIEF_GLSL = /* glsl */ `
           highland = mix(0.15, 1.0, smoothstep(-0.1, 0.25, belt));
         }
         vec3 q = d * uErosionFreq + vec3(mod(uSurfaceSeed * 0.613, 53.0), 7.7, mod(uSurfaceSeed * 0.287, 47.0));
-        vec4 worn = erodedd(q, octaves, 0.45, 0.6);
+        // Damped only lightly: fully, every flank was one smooth sheet of
+        // debris and the mountains read as sand dunes.
+        vec4 worn = erodedd(q, octaves, 0.5, 0.15);
         float scale = uErosion * highland;
         t.x += worn.x * scale;
         t.yzw += worn.yzw * uErosionFreq * scale;
@@ -465,6 +470,20 @@ const RELIEF_GLSL = /* glsl */ `
         float r = scale * 0.035 * (0.35 + high) * smoothstep(0.5, 1.5, hillOct);
         t.x += hills.x * r;
         t.yzw += hills.yzw * 260.0 * r;
+      }
+      // Crags: broken rock wherever the land is steep, from a dozen kilometres
+      // down to a couple of hundred metres, and none on the flats where debris
+      // fills in. Without it the finest relief on a mountain is the range's
+      // own last octave, and up close every slope is one smooth sweep. Six
+      // octaves at most: past that the direction's own precision shows.
+      float cragOct = log2(0.5 / max(pixelAngle * 3000.0, 1e-12));
+      float slope = length(t.yzw - d * dot(t.yzw, d)) / uRadius;
+      float rugged = (0.3 + 0.7 * high) * smoothstep(0.04, 0.22, slope);
+      if (cragOct > 0.5 && rugged > 0.01) {
+        vec4 crag = ridgedd(d * 3000.0 + 9.1, int(clamp(cragOct, 1.0, 6.0)));
+        float c = scale * 0.035 * rugged * smoothstep(0.5, 1.5, cragOct);
+        t.x += (crag.x - 0.5) * c;
+        t.yzw += crag.yzw * 3000.0 * c;
       }
     }
     if (uOceanRelief > 0.001 && uHasOcean > 0.5) {
@@ -745,6 +764,7 @@ const VERTEX = /* glsl */ `
 
   varying vec3 vDir;
   varying float vLevel;
+  varying float vSkirt;
   varying float vHeight;
   varying vec3 vLocal;
   varying vec3 vRel;
@@ -804,6 +824,7 @@ const VERTEX = /* glsl */ `
 
     vDir = dir;
     vLevel = iLevel;
+    vSkirt = skirt;
     vHeight = height;
     vLocal = local;
 
@@ -915,6 +936,7 @@ uniform float uWaveTime;
 
   varying vec3 vDir;
   varying float vLevel;
+  varying float vSkirt;
   varying float vHeight;
   varying vec3 vLocal;
   // From the eye, at full precision; see the vertex stage.
@@ -1239,10 +1261,9 @@ uniform float uWaveTime;
       // The mean of the footprint's two sides rather than its long one: fading
       // on the long side clears the stones off the ground twenty metres out.
       float footprintM = length(vRel) * 1000.0 / uPixelsPerRadian * sqrt(footprintScale);
-      if (footprintM < 6.0) {
+      if (footprintM < 200.0) {
         float sea = uHasOcean > 0.5 ? wrapTexture(uOceanMap, uv).r : wet;
-        vec3 metres = uDetailFrac + (uCameraRel + vRel) * 1000.0;
-        detailShade = groundDetail(dir, metres, footprintM, 1.0 - sea, normal);
+        detailShade = groundDetail(dir, (uCameraRel + vRel) * 1000.0, vHeight * 1000.0, footprintM, (1.0 - sea) * (1.0 - vSkirt), normal);
       }
     }
 
@@ -2264,6 +2285,8 @@ export class Planet {
         uViewRotation: { value: new Matrix3() },
         uDetailCell: { value: new Int32Array(3) },
         uDetailFrac: { value: new Vector3() },
+        uMapBasis: { value: new Matrix3() },
+        uMapFrac: { value: new Vector3() },
         uSkyFill: { value: 0 },
         // Stones on the ground: thickest on airless worlds, where nothing
         // weathers them away; none on a world with no ground to stand on.
@@ -2272,6 +2295,7 @@ export class Planet {
             ?? ((spec.banding ?? 0) > 0 || this.radius > 20000 ? 0 : spec.atmosphere ? 0.3 : 0.6),
         },
         uStones: { value: spec.stones ?? 1 },
+        ...groundTextureUniforms(),
       },
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
@@ -2312,6 +2336,7 @@ export class Planet {
           detailCell[i] = cell + 16777216;
           detailFrac.setComponent(i, metres - cell);
         }
+        this._placeGroundMap(anchor);
       }
       cameraRel.subVectors(eye, anchor);
       modelView.multiplyMatrices(camera.matrixWorldInverse, this.mesh.matrixWorld);
@@ -2737,6 +2762,36 @@ export class Planet {
    * @param {Vector3} sunLocal unit vector to the sun in the same frame
    * @param {number} pixelsPerRadian
    */
+  /**
+   * The plane the ground textures are laid on: tangent at a point near the
+   * camera and kept there until the camera has gone far enough that the
+   * planet's curve would tilt it noticeably. The anchor's place on it is
+   * worked out here in doubles and wrapped to the 1024 m the textures repeat
+   * over, so the shader only ever adds small numbers to it.
+   */
+  _placeGroundMap(anchor) {
+    const u = this.material.uniforms;
+    const map = (this._groundMap ??= { origin: null, t: new Vector3(), b: new Vector3(), n: new Vector3() });
+    const dir = anchor.clone().normalize();
+    if (!map.origin || map.n.distanceTo(dir) * this.radius > GROUND_MAP_REACH_KM) {
+      map.origin = dir.clone().multiplyScalar(this.radius);
+      map.n.copy(dir);
+      const pole = Math.abs(dir.y) < 0.9 ? new Vector3(0, 1, 0) : new Vector3(1, 0, 0);
+      map.t.crossVectors(pole, dir).normalize();
+      map.b.crossVectors(dir, map.t);
+      // Rows are the plane's axes, so the matrix takes a body-frame offset
+      // to (along, across, up).
+      u.uMapBasis.value.set(
+        map.t.x, map.t.y, map.t.z,
+        map.b.x, map.b.y, map.b.z,
+        map.n.x, map.n.y, map.n.z,
+      );
+    }
+    const offset = anchor.clone().sub(map.origin).multiplyScalar(1000);
+    const wrap = (v) => v - Math.floor(v / 1024) * 1024;
+    u.uMapFrac.value.set(wrap(offset.dot(map.t)), wrap(offset.dot(map.b)), wrap(offset.dot(map.n)));
+  }
+
   /**
    * Down among the land the haze over it is laid on by the land's true
    * distance, which the terrain writes into alpha; from higher up the sky's
