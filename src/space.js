@@ -3190,6 +3190,7 @@ function collectLabelItems() {
 
 function frame(now) {
   requestAnimationFrame(frame);
+  if (quality.paceMs && now - lastFrame < quality.paceMs - 4) return;
   const interval = now - lastFrame;
   const dt = Math.min(interval / 1000, 0.25);
   lastFrame = now;

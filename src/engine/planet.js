@@ -8,6 +8,7 @@ import {
   Camera,
   Color,
   CustomBlending,
+  DstAlphaFactor,
   EqualStencilFunc,
   FloatType,
   FrontSide,
@@ -18,6 +19,8 @@ import {
   NearestFilter,
   KeepStencilOp,
   NotEqualStencilFunc,
+  OneFactor,
+  OneMinusDstAlphaFactor,
   Points,
   ReplaceStencilOp,
   RGBAFormat,
@@ -42,6 +45,9 @@ import { platform } from './platform.js';
 
 /** Patch budget for a body that does not ask for its own. */
 const DEFAULT_MAX_PATCHES = 2400;
+
+/** Height above the ground under which the land's own distance sets its haze. */
+const LOW_HAZE_KM = 8;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const smoothstep = (a, b, x) => {
@@ -446,7 +452,7 @@ const RELIEF_GLSL = /* glsl */ `
       float rangeOct = log2(0.5 / max(pixelAngle * 22.0, 1e-12));
       if (high > 0.001 && rangeOct > 0.5) {
         vec4 ridges = ridgedd(qw * 13.0 + 5.7, int(clamp(rangeOct, 1.0, 8.0)));
-        float r = scale * 0.55 * high * smoothstep(0.5, 1.5, rangeOct);
+        float r = scale * 0.95 * high * smoothstep(0.5, 1.5, rangeOct);
         t.x += (ridges.x - 0.35) * r;
         t.yzw += ridges.yzw * 13.0 * 1.7 * r;
       }
@@ -503,7 +509,7 @@ const RELIEF_GLSL = /* glsl */ `
       // Flat-lying strata eroded back into benches: each layer a near-level
       // tread ending at a cliff. Only over some provinces, so a world has its
       // mesa country and its rolling country rather than steps everywhere.
-      float province = smoothstep(0.0, 0.3, fbmd(d * 3.1 + uSurfaceSeed * 0.021 + 17.0, 3, 2.0, 0.5).x);
+      float province = smoothstep(0.3, 0.55, fbmd(d * 3.1 + uSurfaceSeed * 0.021 + 17.0, 3, 2.0, 0.5).x);
       float amt = uTerrace * province;
       if (amt > 0.001) {
         float s = t.x / uTerraceKm;
@@ -859,6 +865,7 @@ const FRAGMENT = /* glsl */ `
   uniform float uPhotometry;      // 0 = lambert, 1 = Lommel-Seeliger regolith
   uniform vec3 uAtmosphereTint;
   uniform float uAtmosphereDensity;
+  uniform float uHazeK;           // air extinction per km at the camera, 0 = off
   uniform float uSpecular;
   uniform float uPixelsPerRadian;
   uniform float uPolarSmooth;
@@ -1570,7 +1577,9 @@ uniform float uWaveTime;
       return;
     }
 
-    gl_FragColor = vec4(colour, 1.0);
+    // Alpha carries how much air lies between the camera and this point, for
+    // the haze pass to mix by. Only the land knows how far off it really is.
+    gl_FragColor = vec4(colour, uHazeK > 0.0 ? 1.0 - exp(-uHazeK * length(vRel)) : 1.0);
   }
 `;
 
@@ -1722,6 +1731,9 @@ const SKY_COMMON = /* glsl */ `
   uniform vec3 uDeckTint;
   // 1 in the pass drawn over this body's own ground, 0 over everything else.
   uniform float uOnGround;
+  // Down among the land, the pass over the ground draws the haze a whole ray
+  // would reach and the land's own alpha says how much of it to lay on.
+  uniform float uFogMix;
   // How far the land rises above the ground under the camera.
   uniform float uReliefKm;
 
@@ -1782,6 +1794,16 @@ const SKY_COMMON = /* glsl */ `
     if (ground.x > 0.0 && ground.y > ground.x) {
       far = min(far, ground.x);
       gSkyward = false;
+      if (uOnGround > 0.5) {
+        // Land seen a small angle below level is roughly its relief over that
+        // angle away, far beyond the smooth ground's horizon a few km off. Going
+        // by the angle grows the haze smoothly up to the ridge line instead of
+        // jumping within a pixel of the tangent.
+        vec2 top = sphereSpan(origin, ray, uRadius + max(uGroundKm, 0.0) + uReliefKm);
+        float below = max(-dot(ray, normalize(origin)), 1e-4);
+        float reach = min(uReliefKm * 0.06 / below, top.y);
+        if (top.x <= 0.0) far = min(shell.y, max(ground.x, reach));
+      }
     } else if (uGroundKm > 0.0) {
       // Over the local horizon but still into the lower ground: that is the
       // distant terrain, and ending at the tangent point joins it to the near
@@ -1799,6 +1821,11 @@ const SKY_COMMON = /* glsl */ `
         far = min(far, top.y);
         gSkyward = false;
       }
+    }
+    if (uFogMix > 0.5) {
+      vec2 top = sphereSpan(origin, ray, uRadius + max(uGroundKm, 0.0) + uReliefKm);
+      if (top.x <= 0.0) far = min(shell.y, top.y);
+      gSkyward = false;
     }
     len = far - near;
     return len > 1e-6;
@@ -1934,6 +1961,11 @@ const SKY_INSCATTER_FRAGMENT = /* glsl */ `
         * day * (0.16 + 0.1 * lift + 0.12 * pow(max(mu, 0.0), 6.0));
       float fog = gSkyward ? 1.0 : 1.0 - exp(-len / (uScaleHeight * 2.0));
       colour = mix(colour, deck, uOvercast * fog);
+    }
+    if (uFogMix > 0.5) {
+      vec2 column = columnAlong(origin + ray * near, ray, len);
+      vec3 opacity = 1.0 - exp(-(uRayleigh * column.x + vec3(uMie * column.y)));
+      colour /= max(opacity, vec3(1e-4));
     }
     gl_FragColor = vec4(colour, 1.0);
   }
@@ -2125,6 +2157,7 @@ export class Planet {
         uPhotometry: { value: spec.photometry ?? 1 },
         uAtmosphereTint: { value: new Color(...(spec.atmosphere?.tint ?? [0.35, 0.55, 1])) },
         uAtmosphereDensity: { value: spec.atmosphere ? spec.atmosphere.density : 0 },
+        uHazeK: { value: 0 },
         uSpecular: { value: spec.specular ?? 0 },
         uPolarSmooth: { value: spec.polarSmooth ?? 0 },
         uBanding: { value: spec.banding ?? 0 },
@@ -2152,7 +2185,9 @@ export class Planet {
         // float only places a point to a tenth of a metre on a moon, and the
         // ground detail layer, which counts metres exactly, carries on below.
         uErosionOctaves: {
-          value: Math.max(Math.log2(this.radius / (spec.erosionFreq ?? 400) / 0.002), 0),
+          // Capped at nine: past that each octave costs as much as the first
+          // and adds detail the stones and soil layer already draws.
+          value: clamp(Math.log2(this.radius / (spec.erosionFreq ?? 400) / 0.002), 0, 9),
         },
         uHighlandMap: { value: null },
         uHighlandSplit: { value: 0 },
@@ -2384,7 +2419,8 @@ export class Planet {
       uOvercast: { value: air.overcast ?? 0 },
       uDeckTint: { value: new Color(...tint.map((c) => c / peak)) },
       uOnGround: { value: 0 },
-      uReliefKm: { value: Math.min(3, this.radius * 0.02) },
+      uFogMix: { value: 0 },
+      uReliefKm: { value: Math.min(1.5, this.radius * 0.01) },
     };
 
     this.skyUniforms = uniforms;
@@ -2440,7 +2476,7 @@ export class Planet {
     // the air. The ground's stencil mark is what tells the two apart.
     const overGround = (material) => {
       const copy = material.clone();
-      copy.uniforms = { ...material.uniforms, uOnGround: { value: 1 } };
+      copy.uniforms = { ...material.uniforms, uOnGround: { value: 1 }, uFogMix: { value: 0 } };
       copy.stencilFunc = EqualStencilFunc;
       return copy;
     };
@@ -2701,6 +2737,40 @@ export class Planet {
    * @param {Vector3} sunLocal unit vector to the sun in the same frame
    * @param {number} pixelsPerRadian
    */
+  /**
+   * Down among the land the haze over it is laid on by the land's true
+   * distance, which the terrain writes into alpha; from higher up the sky's
+   * two passes estimate it, which is right for a disc and wrong for a ridge
+   * standing behind a near crest.
+   */
+  _hazeOverGround(inside, cameraLocal, groundKm) {
+    const s = this.skyUniforms;
+    const altitude = cameraLocal.length() - this.radius;
+    const fog = inside && altitude - Math.max(groundKm, 0) < LOW_HAZE_KM;
+    // Half again over the single-scattering extinction: the light scattered
+    // more than once that brightens the sky dome hazes the land too.
+    const k = fog
+      ? 1.5 * (((s.uRayleigh.value.x + s.uRayleigh.value.y + s.uRayleigh.value.z) / 3) * Math.exp(-altitude / s.uScaleHeight.value)
+        + s.uMie.value * Math.exp(-altitude / s.uMieHeight.value))
+      : 0;
+    this.material.uniforms.uHazeK.value = k;
+    const ground = this.skyInscatterGround;
+    if (ground.uniforms.uFogMix.value === (fog ? 1 : 0)) return;
+    ground.uniforms.uFogMix.value = fog ? 1 : 0;
+    this.skyExtinctionGround.visible = !fog;
+    if (fog) {
+      ground.blending = CustomBlending;
+      ground.blendEquation = AddEquation;
+      ground.blendSrc = DstAlphaFactor;
+      ground.blendDst = OneMinusDstAlphaFactor;
+      // Alpha back to opaque, or the canvas shows through the land.
+      ground.blendSrcAlpha = OneFactor;
+      ground.blendDstAlpha = ZeroFactor;
+    } else {
+      ground.blending = AdditiveBlending;
+    }
+  }
+
   update({
     cameraLocal, sunLocal, pixelsPerRadian, sunColour, sunIntensity, viewLocal, coneCos,
     occluder, occluder2, umbraLight, sunAngular, shineDir, shine, shineColour, tideDir,
@@ -2789,6 +2859,7 @@ export class Planet {
         material.side = inside ? BackSide : FrontSide;
         material.depthTest = !inside;
       }
+      this._hazeOverGround(inside, cameraLocal, groundKm);
       // How much a lit sky overhead drowns out the stars, for the star field to
       // fade by: nothing at night or from above the air, almost everything under
       // Earth's noon sky, less under a thin one like Mars'.

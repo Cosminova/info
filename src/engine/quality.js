@@ -22,7 +22,7 @@
  * is allowed to climb. The split between the two files is whether a cost can be
  * changed mid-flight: everything here can, and everything there cannot.
  */
-import { platform } from './platform.js';
+import { basePixelRatio, platform } from './platform.js';
 
 /**
  * Levels run 0 (cheapest) to 1 (everything on). The mapping is deliberately not
@@ -34,9 +34,19 @@ export const CEILING = 1;
 
 /** Resolution is quantised because changing it reallocates every render target. */
 const SCALE_STEPS = [0.5, 0.58, 0.67, 0.75, 0.85, 1];
-// Half resolution on a desktop monitor turns every ridge against the sky into
-// a staircase, which reads as broken; a phone's pixels are small enough to hide it.
-const SCALE_FLOOR = platform.deviceClass === 'desktop' ? 0.75 : 0.5;
+// Under one pixel per CSS pixel on a desktop monitor every ridge against the
+// sky turns into a staircase, which reads as broken; a phone's pixels are small
+// enough to hide it. A Retina display has twice that to give, and at its full
+// count the surface can cost several times a frame.
+const SCALE_FLOOR = platform.deviceClass === 'desktop'
+  ? Math.max(0.5, Math.min(0.75, 1 / Math.max(basePixelRatio(), 1)))
+  : 0.5;
+// Past the floor and still this far over budget, frames are spaced out so the
+// GPU is idle part of the time: run flat out it starves the browser's own
+// drawing, and typing anywhere on the machine stutters.
+const PACE_OVERLOAD = 1.6;
+const PACE_SLACK = 1.4;
+const PACE_PROBE_MS = 10000;
 
 function stepFor(value) {
   let best = SCALE_STEPS[0];
@@ -103,6 +113,9 @@ export function createQuality({ onResolutionChange } = {}) {
   let lastChange = 0;
   /** The frame time that justified the most recent downgrade, so it can be judged. */
   let pending = null;
+  /** Least interval between frames while overloaded; 0 when not pacing. */
+  let paceMs = 0;
+  let paceProbe = 0;
 
   /**
    * Frame times are noisy in a way that punishes a mean: a texture upload or a
@@ -133,6 +146,7 @@ export function createQuality({ onResolutionChange } = {}) {
 
   function setPreset(name) {
     settings.preset = name;
+    paceMs = 0;
     if (name !== 'auto') apply(PRESETS[name] ?? 0.75);
     else {
       ceiling = CEILING;
@@ -148,6 +162,7 @@ export function createQuality({ onResolutionChange } = {}) {
     get patchScale() { return applied.patchScale; },
     get microDetail() { return applied.microDetail; },
     get level() { return level; },
+    get paceMs() { return paceMs; },
     get auto() { return settings.preset === 'auto'; },
     setPreset,
     setTargetFps(fps) {
@@ -178,6 +193,21 @@ export function createQuality({ onResolutionChange } = {}) {
       const observed = median();
       if (!observed) return;
       const budget = 1000 / settings.targetFps;
+      if (paceMs) {
+        // Paced frames measure the pacing, not the scene, so every so often
+        // the pacing is lifted to see whether the scene has got cheaper.
+        if (now > paceProbe) {
+          paceMs = 0;
+          settle(400);
+        }
+        return;
+      }
+      if (level <= FLOOR + 1e-3 && observed > budget * PACE_OVERLOAD) {
+        paceMs = Math.min(observed * PACE_SLACK, 250);
+        paceProbe = now + PACE_PROBE_MS;
+        settle(400);
+        return;
+      }
       // Resolution changes cost a frame of their own, so the loop is not allowed
       // to chase every wobble.
       if (now - lastChange < 700) return;

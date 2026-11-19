@@ -107,7 +107,9 @@ function specFromPlanet(entry, described, hostKey) {
     rockDensity: gaseous ? 0 : 0.5,
     // Mesas and stepped cliffs, strongest on dry worlds where nothing fills
     // the steps back in; benches a few hundred metres high.
-    terrace: gaseous ? 0 : clamp((described.terrace ?? 0) * (oceanFraction > 0.6 ? 0.4 : 1) * 1.3 - 0.25, 0, 0.9),
+    // Benched mesa country is a local landform, not a world's whole surface:
+    // laid over everything it turned the land into contour lines.
+    terrace: gaseous ? 0 : clamp((described.terrace ?? 0) * (oceanFraction > 0.6 ? 0.4 : 1) * 1.3 - 0.8, 0, 0.45),
     terraceKm: 0.12 + ((described.terrace ?? 0) * 13.7 % 1) * 0.5,
     // How large the surface provinces are: a world of a few continents or one
     // of many islands.
