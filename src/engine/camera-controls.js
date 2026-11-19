@@ -2,6 +2,10 @@ import { Quaternion, Vector2, Vector3 } from 'three';
 import { platform } from './platform.js';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const smoothstep = (lo, hi, v) => {
+  const t = clamp((v - lo) / (hi - lo), 0, 1);
+  return t * t * (3 - 2 * t);
+};
 
 /**
  * Touch gesture thresholds.
@@ -597,9 +601,10 @@ export class OrbitApproachControls {
    * Stand on the target where the camera is now and walk from there, facing
    * the way the camera was facing.
    */
-  startWalk() {
+  startWalk({ descend = false } = {}) {
     if (this.mode === 'roam') this.stopRoam();
     this._flight = null;
+    this._descent = null;
     this.cruise = 0;
     if (this.riding) this.setRiding(false);
     this.earthView = false;
@@ -608,6 +613,13 @@ export class OrbitApproachControls {
     this.zoomVelocity = 0;
     const inverse = this.walkFrame ? this._walkFrameInverse.copy(this.walkFrame).invert() : null;
     const up = this.walkLocal.subVectors(this.worldPosition, this.targetPosition);
+    const altitudeKm = up.length() - this.targetRadius;
+    // Where the camera is now, in the same frame the landing point ends up in,
+    // for a descent that starts from here rather than a cut to the ground.
+    const from = (this._descentFrom ??= new Vector3()).copy(up).normalize();
+    const fromPitch = Math.asin(clamp(this._forward.dot(from), -1, 1));
+    if (inverse) from.applyQuaternion(inverse);
+    from.divide(this.walkAxisScale).normalize();
     // Land where the crosshair is: the first point the view ray meets the
     // sphere. Looking past the limb there is nothing to aim at, so then it is
     // the ground straight below.
@@ -643,6 +655,55 @@ export class OrbitApproachControls {
     this.lookYaw = 0;
     this.lookPitch = 0;
     this.mode = 'walk';
+    if (descend && altitudeKm > 0.2) {
+      this._descent = {
+        t: 0,
+        // A few seconds from a low hover, up to about eleven from orbit.
+        duration: clamp(3 + 1.4 * Math.log10(altitudeKm / 0.0017), 4, 11),
+        altitudeKm,
+        from: from.clone(),
+        to: up.clone(),
+        fromPitch: clamp(fromPitch, -1.5, 1.5),
+        toPitch: this.walkPitch,
+      };
+      this.walkEyeKm = altitudeKm;
+      this.walkLocal.copy(from);
+      this.walkHeadingLocal.addScaledVector(from, -this.walkHeadingLocal.dot(from)).normalize();
+      this.walkPitch = this._descent.fromPitch;
+    }
+  }
+
+  /** True while the camera is still coming down to stand on the ground. */
+  get descending() {
+    return Boolean(this._descent);
+  }
+
+  /**
+   * One step of the descent: the height falls at a steady zoom rate, the way
+   * a camera dropping through the air sees the ground grow, the point under
+   * it slides over to where you aimed, and only near the end does the view
+   * lift from looking down to looking at the horizon.
+   */
+  _stepDescent(dt, skip) {
+    const d = this._descent;
+    d.t = skip ? 1 : Math.min(d.t + dt / d.duration, 1);
+    const t = d.t;
+    const ease = 0.4 * t + 0.6 * t * t * (3 - 2 * t);
+    const from = Math.log(d.altitudeKm);
+    const to = Math.log(0.0017);
+    this.walkEyeKm = Math.exp(from + (to - from) * ease);
+    const slide = smoothstep(0, 0.8, t);
+    const upL = this.walkLocal.copy(d.from).lerp(d.to, slide).normalize();
+    const headingL = this.walkHeadingLocal;
+    headingL.addScaledVector(upL, -headingL.dot(upL));
+    if (headingL.lengthSq() < 1e-10) headingL.set(1, 0, 0).addScaledVector(upL, -upL.x);
+    headingL.normalize();
+    // Tipped forward early so the horizon and the haze over it are in view
+    // on the way down, then level with it on touching down.
+    const oblique = Math.max(d.fromPitch, -0.5);
+    this.walkPitch = d.fromPitch + (oblique - d.fromPitch) * smoothstep(0.05, 0.45, t)
+      + (d.toPitch - oblique) * smoothstep(0.6, 1, t);
+    if (t >= 1) this._descent = null;
   }
 
   /** Back to orbiting the target from wherever the walk ended. */
@@ -1229,6 +1290,9 @@ export class OrbitApproachControls {
       (keys.has('KeyA') || keys.has('ArrowLeft') ? -1 : 0);
     const rise = (keys.has('KeyE') ? 1 : 0) + (keys.has('KeyQ') ? -1 : 0);
     const run = keys.has('ShiftLeft') || keys.has('ShiftRight') ? 10 : 1;
+    // Coming down, the keys only cut the descent short.
+    if (this._descent) this._stepDescent(dt, Boolean(thrust || strafe || rise));
+    if (this._descent) return this._walkView();
     // Holding a direction builds up over five seconds from a walk to sixty
     // times that, so a short tap still places you precisely and a long press
     // crosses a continent.
@@ -1254,7 +1318,13 @@ export class OrbitApproachControls {
       upL.addScaledVector(move, step).normalize();
       headingL.addScaledVector(upL, -headingL.dot(upL)).normalize();
     }
+    return this._walkView();
+  }
 
+  /** The eye and view direction for where the walker is standing now. */
+  _walkView() {
+    const upL = this.walkLocal;
+    const headingL = this.walkHeadingLocal;
     const up = this.groundUp.copy(upL);
     const heading = this._walkMove.copy(headingL);
     if (this.walkFrame) {
@@ -1282,6 +1352,7 @@ export class OrbitApproachControls {
 
   /** Turn on the spot while walking: yaw about the local vertical, pitch up and down. */
   _walkLook(dx, dy) {
+    if (this._descent) return;
     const s = this.lookSensitivity;
     const upL = this.walkLocal;
     this._quat.setFromAxisAngle(upL, -dx * s);

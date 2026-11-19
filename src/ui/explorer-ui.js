@@ -984,7 +984,7 @@ export function createExplorerUI(config) {
     if (mode === 'walk') {
       controls.trackTarget = false;
       if (resolveWorld(state.target)?.kind !== 'body') return;
-      controls.startWalk();
+      controls.startWalk({ descend: true });
     } else if (mode === 'orbit') {
       controls.mode = 'orbit';
       controls.trackTarget = false;
