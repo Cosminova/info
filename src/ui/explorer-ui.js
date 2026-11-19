@@ -57,8 +57,10 @@ const CAMERA_MODES = [
     value: 'free',
     label: 'Fly',
     title: TOUCH
-      ? 'Thrust with the flight pad, still measured from the selected body.'
-      : 'Thrust with WASD and Q/E, still measured from the selected body.',
+      ? 'Fly anywhere on your own, tied to nothing. Flight pad to move, drag to look, pinch sets speed. '
+        + 'Speed scales with how close the nearest surface is, and near a world the horizon stays level.'
+      : 'Fly anywhere on your own, tied to nothing (F). W/S forward and back, A/D slide, E/Q up and down, '
+        + 'drag to look, the wheel sets speed. Near a world the horizon stays level.',
   },
   {
     value: 'track',
@@ -73,15 +75,6 @@ const CAMERA_MODES = [
     title: TOUCH
       ? 'Stand on the selected world and walk on it. Flight pad to walk, drag to look round.'
       : 'Stand on the selected world and walk on it (L), or scroll all the way into the ground. W/S/A/D walk and speed up as you hold them, Shift runs, [ and ] set the pace, the wheel raises your eye and scrolling out far enough takes off.',
-  },
-  {
-    value: 'roam',
-    label: 'Roam',
-    title: TOUCH
-      ? 'Let go of the body entirely and fly through open space. '
-        + 'Drag turns you on the spot, pinch sets your speed.'
-      : 'Let go of the body entirely and fly through open space. '
-        + 'Drag turns you on the spot, the wheel sets your speed.',
   },
   {
     value: 'ship',
@@ -690,16 +683,16 @@ export function createExplorerUI(config) {
               + '<b>Shift</b> runs, and holding a key builds speed. <b>[</b> and <b>]</b> set your pace, '
               + 'drag looks around, and the wheel raises and lowers your eye. Scroll out far enough and you '
               + 'take off back into the sky; scroll all the way into the ground from orbit and you land. '
-              + 'In <b>Fly</b> and <b>Roam</b>, <b>[</b> and <b>]</b> set the speed too, and holding <b>W</b> keeps accelerating.' }),
+              + 'In <b>Fly</b>, <b>[</b> and <b>]</b> set the speed too, and holding <b>W</b> keeps accelerating.' }),
 
           el('div', { class: 'section-title', text: 'The other camera modes' }),
           el('p', { class: 'prose', html:
             '<b>Orbit</b> circles whatever is selected \u2014 the mode you arrive in. '
             + (TOUCH
-              ? '<b>Fly</b> adds thrust on the <b>flight pad</b> that appears below, still measured from that body. '
-              : '<b>Fly</b> adds thrust on <b>W A S D</b>, still measured from that body. ')
-            + '<b>Track</b> is the same but keeps the body centred while you move. '
-            + '<b>Roam</b> lets go of it completely: no target, no orbit, just open space. '
+              ? '<b>Fly</b> lets go of it completely and you travel on your own with the <b>flight pad</b>: no target, no orbit, anywhere. '
+              : '<b>Fly</b> (or <b>F</b>) lets go of it completely and you travel on your own with <b>W A S D</b>, <b>E</b> up and <b>Q</b> down: no target, no orbit, anywhere. ')
+            + 'Near a world the horizon stays level, like flying over ground. '
+            + '<b>Track</b> thrusts while keeping the selected body centred. '
             + (TOUCH
               ? 'Drag turns you on the spot, pinch sets your speed, and how fast you go '
               : 'Drag turns you on the spot, the wheel sets your speed, and how fast you go ')
@@ -981,10 +974,12 @@ export function createExplorerUI(config) {
   }
 
   function setCameraMode(mode) {
+    // Roam and Fly are one thing now: free flight.
+    if (mode === 'roam') mode = 'free';
     if (mode !== 'ship') hooks.setShip?.(false);
     // Leaving roam has to hand the target back before anything else reads the
     // distance, since roaming leaves the camera somewhere no bearing describes.
-    if (mode !== 'roam' && mode !== 'ship') controls.stopRoam();
+    if (mode !== 'free' && mode !== 'ship') controls.stopRoam();
     if (mode !== 'walk') controls.stopWalk();
     if (mode === 'walk') {
       controls.trackTarget = false;
@@ -994,14 +989,11 @@ export function createExplorerUI(config) {
       controls.mode = 'orbit';
       controls.trackTarget = false;
     } else if (mode === 'free') {
-      controls.mode = 'fly';
       controls.trackTarget = false;
+      controls.startRoam();
     } else if (mode === 'track') {
       controls.mode = 'fly';
       controls.trackTarget = true;
-    } else if (mode === 'roam') {
-      controls.trackTarget = false;
-      controls.startRoam();
     } else if (mode === 'ship') {
       hooks.setShip?.(true);
     }
@@ -1009,13 +1001,13 @@ export function createExplorerUI(config) {
     // Orbit has nothing for thrust to do, so the pad only exists in the modes
     // where pressing a key moves you.
     flight.setVisible(mode !== 'orbit');
-    flight.setRoaming(mode === 'roam' || mode === 'ship');
+    flight.setRoaming(mode === 'free' || mode === 'ship');
     flight.setWalking(mode === 'walk');
   }
 
   function currentMode() {
     if (controls.pilot && controls.mode === 'roam') return 'ship';
-    if (controls.mode === 'roam') return 'roam';
+    if (controls.mode === 'roam') return 'free';
     if (controls.mode === 'walk') return 'walk';
     if (state.viewFromEarth) return 'orbit';
     if (controls.mode === 'fly') return controls.trackTarget ? 'track' : 'free';
@@ -1242,7 +1234,8 @@ export function createExplorerUI(config) {
   shortcuts.register({ id: 'nav.goto', key: 'G', label: 'Travel to the selection', group: 'Navigation', run: () => runAction('goto') });
   shortcuts.register({ id: 'nav.orbit', key: 'O', label: 'Orbit the selection', group: 'Navigation', run: () => runAction('orbit') });
   shortcuts.register({ id: 'nav.track', key: 'T', label: 'Track the selection', group: 'Navigation', run: () => setCameraMode(currentMode() === 'track' ? 'free' : 'track') });
-  shortcuts.register({ id: 'nav.roam', key: 'R', label: 'Roam free of any target', group: 'Navigation', run: () => setCameraMode(currentMode() === 'roam' ? 'orbit' : 'roam') });
+  shortcuts.register({ id: 'nav.roam', key: 'R', label: 'Fly free of any target', group: 'Navigation', run: () => setCameraMode(currentMode() === 'free' ? 'orbit' : 'free') });
+  controls.onFlyKey = () => setCameraMode(currentMode() === 'free' ? 'orbit' : 'free');
   shortcuts.register({ id: 'ship.toggle', key: 'P', label: 'Take or leave the ship', group: 'Ship', run: () => setCameraMode(currentMode() === 'ship' ? 'orbit' : 'ship') });
   shortcuts.register({ id: 'ship.view', key: 'V', label: 'Chase or cockpit view', group: 'Ship', when: () => hooks.shipActive?.(), run: () => hooks.toggleShipView?.() });
   shortcuts.register({ id: 'ship.brake', key: 'X', label: 'Full stop', group: 'Ship', when: () => hooks.shipActive?.(), run: () => hooks.shipBrake?.() });

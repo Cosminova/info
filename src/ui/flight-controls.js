@@ -172,7 +172,7 @@ export function createFlightControls({ controls, prefs }) {
   const readoutSpeed = el('span', { class: 'flight-readout-speed' });
   const readoutNear = el('span', { class: 'flight-readout-near' });
   const readout = el('div', { class: 'flight-readout', hidden: true }, [
-    el('span', { class: 'flight-readout-label', text: 'Free roam' }),
+    el('span', { class: 'flight-readout-label', text: 'Free flight' }),
     readoutSpeed,
     readoutNear,
   ]);

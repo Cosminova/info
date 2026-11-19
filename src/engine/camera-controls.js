@@ -158,6 +158,17 @@ export class OrbitApproachControls {
      * round. Changing anchor rebases this once — see `setRoamAnchor`.
      */
     this.roamOffset = new Vector3();
+    /**
+     * The free-flight frame: a heading and a pitch measured from `roamUp`
+     * rather than from world axes, so near a world the horizon stays level as
+     * you fly round it and in open space it holds whatever it last was. The
+     * app pulls `roamUp` towards the nearest body through `levelRoamTo`.
+     */
+    this.roamUp = new Vector3(0, 1, 0);
+    this.roamHeading = new Vector3(0, 0, 1);
+    this.roamPitch = 0;
+    this._roamLevel = new Vector3(0, 1, 0);
+    this._roamLevelWeight = 0;
     this.cruise = 0;
     this.earthView = false;
     this.groundUp = new Vector3(0, 1, 0);
@@ -378,15 +389,8 @@ export class OrbitApproachControls {
         // Turning on the spot, and without a limit. The other modes steer with
         // the look offsets, which are clamped to a cone because they are an
         // offset from the line to the target — that would stop a roaming camera
-        // from turning round to look at where it had come from. Yaw and pitch
-        // are the view direction here, so they are what a drag moves.
-        const lookScale = this.lookSensitivity;
-        this.yaw = wrapAngle(this.yaw + dx * lookScale);
-        // Short of straight up: past vertical the view inverts, and with no roll
-        // control there is no way to recover an upright horizon from it.
-        this.pitch = clamp(this.pitch + dy * lookScale, -1.5533, 1.5533);
-        this.lookYaw = 0;
-        this.lookPitch = 0;
+        // from turning round to look at where it had come from.
+        this._roamLook(dx, dy);
         // No coasting: aiming by hand wants the view to stop when the hand does.
         this._lastDrag.set(0, 0);
       } else if (this._dragging === 'look' || this.mode === 'fly' || this.earthView || this.riding) {
@@ -506,10 +510,12 @@ export class OrbitApproachControls {
       }
       if (event.code === 'KeyF' && !this.pilot) {
         this.earthView = false;
-        this.mode = this.mode === 'fly' ? 'orbit' : 'fly';
-        if (this.mode === 'orbit') {
-          this.lookYaw = 0;
-          this.lookPitch = 0;
+        // The app owns the mode buttons, so it is asked rather than told.
+        if (this.onFlyKey) this.onFlyKey();
+        else if (this.mode === 'roam') this.stopRoam();
+        else {
+          if (this.mode === 'walk') this.stopWalk();
+          this.startRoam();
         }
       }
     });
@@ -563,6 +569,11 @@ export class OrbitApproachControls {
     const f = this._forward;
     this.yaw = Math.atan2(f.x, f.z);
     this.pitch = clamp(Math.asin(clamp(f.y, -1, 1)), -1.5533, 1.5533);
+    // Up is the view's own up as of the last frame, so the horizon does not
+    // jump on letting go; levelling towards the nearest world takes over after.
+    this.roamUp.copy(this._up.lengthSq() > 0.5 ? this._up : this.roamUp).normalize();
+    this.roamPitch = Math.asin(clamp(f.dot(this.roamUp), -1, 1));
+    this._roamFlatten(f);
     this.lookYaw = 0;
     this.lookPitch = 0;
     this.yawVelocity = 0;
@@ -640,6 +651,77 @@ export class OrbitApproachControls {
     this.mode = 'orbit';
     this.lookYaw = 0;
     this.lookPitch = 0;
+  }
+
+  /**
+   * Which way is up for free flight, and how firmly: 1 next to a world, where
+   * flying should feel like flying over ground, falling to 0 in open space,
+   * where nothing defines it and the frame is left where it is.
+   */
+  levelRoamTo(up, weight) {
+    this._roamLevel.copy(up).normalize();
+    this._roamLevelWeight = clamp(weight, 0, 1);
+  }
+
+  /** Heading as the part of `dir` level with `roamUp`. */
+  _roamFlatten(dir) {
+    const up = this.roamUp;
+    const h = this.roamHeading.copy(dir).addScaledVector(up, -dir.dot(up));
+    if (h.lengthSq() < 1e-10) {
+      // Looking straight along up: keep the old heading's level part instead.
+      h.copy(this._right).cross(up);
+    }
+    if (h.lengthSq() < 1e-10) h.set(1, 0, 0).addScaledVector(up, -up.x);
+    h.normalize();
+  }
+
+  /** Turn on the spot in free flight: yaw about local up, pitch short of vertical. */
+  _roamLook(dx, dy) {
+    const s = this.lookSensitivity;
+    this.roamHeading.applyAxisAngle(this.roamUp, -dx * s);
+    this.roamPitch = clamp(this.roamPitch - dy * s, -1.5533, 1.5533);
+    this.lookYaw = 0;
+    this.lookPitch = 0;
+  }
+
+  /** Swing up towards the levelling target and return the view direction. */
+  _stepRoamFrame(dt) {
+    const w = this._roamLevelWeight;
+    if (w > 0) {
+      const up = this.roamUp;
+      // Where the camera looks stays put through the swing: only the horizon
+      // rolls level, so the world you were looking at stays in view.
+      const cp0 = Math.cos(this.roamPitch);
+      const gaze = (this._roamGaze ??= new Vector3())
+        .copy(this.roamHeading).multiplyScalar(cp0).addScaledVector(up, Math.sin(this.roamPitch));
+      const angle = up.angleTo(this._roamLevel);
+      if (angle > 1e-7) {
+        const axis = this._quatAxis ??= new Vector3();
+        axis.crossVectors(up, this._roamLevel);
+        if (axis.lengthSq() > 1e-14) {
+          axis.normalize();
+          const step = angle * Math.min(1, dt * 3 * w);
+          up.applyAxisAngle(axis, step).normalize();
+          this.roamHeading.applyAxisAngle(axis, step);
+        }
+      }
+      const along = clamp(gaze.dot(up), -1, 1);
+      this.roamPitch = clamp(Math.asin(along), -1.5533, 1.5533);
+      // Straight down or up the gaze has no level part; the carried heading does.
+      if (Math.abs(along) < 0.9999) this._roamFlatten(gaze);
+      else {
+        this.roamHeading.addScaledVector(up, -this.roamHeading.dot(up));
+        if (this.roamHeading.lengthSq() < 1e-10) this._roamFlatten(this._forward);
+        this.roamHeading.normalize();
+      }
+    }
+    const cp = Math.cos(this.roamPitch);
+    const f = this._forward.copy(this.roamHeading).multiplyScalar(cp).addScaledVector(this.roamUp, Math.sin(this.roamPitch));
+    // Kept in step for whatever takes over from here — a ship launched from
+    // free flight starts from the bearing these describe.
+    this.yaw = Math.atan2(f.x, f.z);
+    this.pitch = Math.asin(clamp(f.y, -1, 1));
+    return f;
   }
 
   /** Take hold of the target again, from wherever roaming left the camera. */
@@ -810,12 +892,11 @@ export class OrbitApproachControls {
       this.pilot.steer(dMidX, dMidY);
       this._lastDrag.set(0, 0);
     } else if (this.mode === 'roam') {
-      // Roaming has no look offset to move: yaw and pitch are the view
+      // Roaming has no look offset to move: heading and pitch are the view
       // direction itself, which is why a right-drag already does the same thing
       // as a left one there. Two fingers match that rather than inventing a
       // second way to turn.
-      this.yaw = wrapAngle(this.yaw + dMidX * lookScale);
-      this.pitch = clamp(this.pitch + dMidY * lookScale, -1.5533, 1.5533);
+      this._roamLook(dMidX, dMidY);
       this._lastDrag.set(0, 0);
     } else {
       this.lookYaw = clamp(this.lookYaw + dMidX * lookScale, -2.8, 2.8);
@@ -1454,7 +1535,7 @@ export class OrbitApproachControls {
       //
       // The view direction is `_offset` used as an aim rather than negated into
       // a line back to the target, so yaw and pitch mean where you are looking.
-      forward = this._forward.copy(this._offset);
+      forward = this.pilot ? this._forward.copy(this._offset) : this._stepRoamFrame(dt);
       if (this.pilot) {
         this.pilot.step(dt, this);
         forward.copy(this.pilot.viewForward);
@@ -1500,7 +1581,8 @@ export class OrbitApproachControls {
     // the fallback below is the limit the two sides agree on rather than a
     // fixed axis, which is what keeps that single frame from jumping.
     const piloting = Boolean(this.pilot) && this.mode === 'roam' && !flight;
-    const orbiting = !this.riding && !this.earthView && !piloting && !(this.mode === 'walk' && !flight);
+    const freeFlying = !this.pilot && this.mode === 'roam' && !flight;
+    const orbiting = !this.riding && !this.earthView && !piloting && !freeFlying && !(this.mode === 'walk' && !flight);
     if (orbiting) {
       // Take the horizon straight from the yaw instead of from a cross product.
       //
@@ -1526,7 +1608,9 @@ export class OrbitApproachControls {
       this._right.addScaledVector(forward, -this._right.dot(forward));
       if (this._right.lengthSq() < 1e-8) this._right.set(1, 0, 0);
     } else {
-      const worldUp = piloting ? this.pilot.viewUp : this.riding && rider ? this._riderUp : this.groundUp;
+      const worldUp = piloting ? this.pilot.viewUp
+        : freeFlying ? this.roamUp
+          : this.riding && rider ? this._riderUp : this.groundUp;
       this._right.crossVectors(worldUp, forward);
       if (this._right.lengthSq() < 1e-8) this._right.set(1, 0, 0);
     }

@@ -2386,6 +2386,13 @@ function updateRoamFrame() {
   roamNearest.key = bestKey;
   roamNearest.position = bestPos;
   roamNearest.radius = bestRadius;
+  // Flying near a world the horizon levels to it, firmly within a radius of
+  // the surface and letting go by six; further out up is left where it is.
+  if (bestKey) {
+    const weight = clamp((6 - bestSurface / bestRadius) / 5, 0, 1);
+    if (weight > 0) controls.levelRoamTo(cameraLocalIn(bestPos, bestKey, tmpRoamLocal), weight);
+    else controls.levelRoamTo(controls.roamUp, 0);
+  }
   // Three hundred radii out a body is a couple of degrees wide and its orbital
   // motion is no longer yours to share.
   if (bestKey && bestSurface < bestRadius * 300) controls.setRoamAnchor(bestKey, bestPos);

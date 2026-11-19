@@ -33,13 +33,13 @@ import { platform } from '../engine/platform.js';
 const STEPS_POINTER = [
   ['Go somewhere', 'Click a name under Destinations, or search for one. Everything you can see is somewhere you can travel to.'],
   ['Look around', 'Drag to swing around what you have arrived at. Scroll to close in, all the way down to standing on the surface.'],
-  ['Fly it yourself', 'Switch the camera to Roam and W A S D moves you through open space, with nothing to orbit and nowhere you cannot go.'],
+  ['Fly it yourself', 'Press F (or pick Fly) and W A S D moves you through open space, with nothing to orbit and nowhere you cannot go.'],
 ];
 
 const STEPS_TOUCH = [
   ['Go somewhere', 'Tap a name under Destinations, or search for one. Everything you can see is somewhere you can travel to.'],
   ['Look around', 'Drag to swing around what you have arrived at. Pinch to close in, all the way down to standing on the surface.'],
-  ['Fly it yourself', 'Switch the camera to Roam and the flight pad moves you through open space, with nothing to orbit and nowhere you cannot go.'],
+  ['Fly it yourself', 'Switch the camera to Fly and the flight pad moves you through open space, with nothing to orbit and nowhere you cannot go.'],
 ];
 
 /**
