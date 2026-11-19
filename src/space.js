@@ -2202,7 +2202,7 @@ function veilSky(day) {
  * Read back asynchronously: a walker crosses a metre a frame at a run, and a
  * synchronous read every frame stalls the whole pipeline while it does.
  */
-const walkProbe = { key: null, dirs: Array.from({ length: 9 }, () => new Vector3()), km: null, at: 0, last: 0, dir: new Vector3() };
+const walkProbe = { key: null, dirs: Array.from({ length: 15 }, () => new Vector3()), km: null, at: 0, last: 0, dir: new Vector3() };
 const walkRight = new Vector3();
 function walkOnGround(surface, key, now) {
   const planet = surface.planet;
@@ -2213,21 +2213,24 @@ function walkOnGround(surface, key, now) {
     walkProbe.km = null;
     walkProbe.at = -Infinity;
   }
-  // Wider at speed, to cover the ground crossed while a read is in flight and
-  // until the next one: each read costs the frame a few milliseconds, so they
-  // come at a steady rate rather than once per frame of movement.
-  const ahead = (controls.walkVelocity * 0.3) / surface.radius;
-  const spacing = Math.max(planet.finestSpacingRadians() * 2, ahead, 2e-7);
+  // The spread stays at the vertex spacing whatever the speed: widened, its
+  // highest point is a bump off to one side, and the walker rides over the
+  // tops of everything nearby and settles back down on stopping. The ground
+  // crossed while a read is in flight is covered by a strip straight ahead
+  // instead, so a rise is reached already standing on it.
+  const spacing = Math.max(planet.finestSpacingRadians() * 2, 2e-7);
+  const lead = (Math.abs(controls.walkVelocity) * 0.25) / surface.radius;
   const moved = walkProbe.dir.angleTo(up);
   const fresh = walkProbe.km === null;
   const due = moved > spacing * 0.25 ? now - walkProbe.at > 90 : now - walkProbe.at > 400;
   if ((fresh || due) && planet.group.visible) {
     walkRight.crossVectors(controls.walkHeadingLocal, up).normalize();
+    const along = [-spacing, 0, spacing, spacing + lead * 0.5, spacing + lead];
     let n = 0;
-    for (let i = -1; i <= 1; i++) {
+    for (const a of along) {
       for (let j = -1; j <= 1; j++) {
         walkProbe.dirs[n++].copy(up)
-          .addScaledVector(controls.walkHeadingLocal, i * spacing)
+          .addScaledVector(controls.walkHeadingLocal, a)
           .addScaledVector(walkRight, j * spacing)
           .normalize();
       }

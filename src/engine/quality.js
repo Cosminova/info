@@ -56,11 +56,15 @@ function derive(level) {
     // Held at full resolution until detail has already been given up, because a
     // soft image reads as broken in a way that a smoother hillside does not.
     renderScale: stepFor(SCALE_FLOOR + (1 - SCALE_FLOOR) * Math.max(0, (t - 0.35) / 0.65)),
-    terrainDetail: 0.42 + 0.58 * t,
+    // In steps, not continuous: every procedural layer picks its octaves from
+    // this, and the auto loop moves the level a little every half second, so a
+    // continuous value redraws the ground's fine texture as the frame rate
+    // wanders — stones and grain visibly changing while you walk and look round.
+    terrainDetail: t >= 0.6 ? 1 : t >= 0.3 ? 0.71 : 0.42,
     patchScale: 0.45 + 0.55 * t,
     // The pebble field is a four-octave noise per fragment that is only visible
     // with your face against the ground. It is the first thing to go.
-    microDetail: t > 0.55,
+    microDetail: t >= 0.6,
   };
 }
 

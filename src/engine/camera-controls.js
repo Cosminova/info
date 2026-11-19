@@ -608,7 +608,6 @@ export class OrbitApproachControls {
     if (up.lengthSq() < 1e-18) up.set(0, 1, 0);
     up.normalize();
     this.walkGroundEpoch = (this.walkGroundEpoch ?? 0) + 1;
-    this._walkClearKm = 0;
     const heading = this.walkHeadingLocal.copy(this._forward);
     const along = heading.dot(up);
     heading.addScaledVector(up, -along);
@@ -1175,14 +1174,6 @@ export class OrbitApproachControls {
       headingL.addScaledVector(upL, -headingL.dot(upL)).normalize();
     }
 
-    // The ground is read back a few frames late. At speed a rise can arrive
-    // before its reading does, so the eye rides higher the faster it goes:
-    // enough to clear a one-in-three slope over the distance covered while a
-    // read is in flight. Up at once, back down over a second or so.
-    const clearTarget = this.walkVelocity * 0.4 * 0.35;
-    const clear = this._walkClearKm ?? 0;
-    this._walkClearKm = clearTarget > clear ? clearTarget : clear + (clearTarget - clear) * Math.min(1, dt * 1.2);
-
     const up = this.groundUp.copy(upL);
     const heading = this._walkMove.copy(headingL);
     if (this.walkFrame) {
@@ -1193,7 +1184,7 @@ export class OrbitApproachControls {
     const eye = this._walkRight.copy(upL)
       .multiply(this.walkAxisScale)
       .multiplyScalar(this.targetRadius + this.walkGroundKm)
-      .addScaledVector(upL, this.walkEyeKm + this._walkClearKm);
+      .addScaledVector(upL, this.walkEyeKm);
     if (this.walkFrame) eye.applyQuaternion(this.walkFrame);
     const distanceKm = eye.length();
     this.distanceRadii = distanceKm / Math.max(this.targetRadius, 1e-6);
