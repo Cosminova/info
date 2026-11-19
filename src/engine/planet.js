@@ -822,6 +822,7 @@ const FRAGMENT = /* glsl */ `
   uniform float uHasDem;
   uniform float uHasNormal;
   uniform float uHasColourMap;
+  uniform float uOwnTexture;
   uniform float uHasNight;
   uniform float uHasOcean;
   uniform vec3 uPaletteA;         // base ground
@@ -1224,6 +1225,23 @@ uniform float uWaveTime;
     // never resolved instead of dissolving into a smooth grey wash.
     vec3 albedo = (uHasColourMap > 0.5 ? sampleColourMap(dir, uv) : proceduralAlbedo(dir))
       * uAlbedoBoost;
+    if (uOwnTexture > 0.0 && uHasColourMap > 0.5) {
+      // Magnified past its texels a photograph is smudges, so close in only
+      // its broadest tone is kept — mare against highland — and the texture
+      // is the ground's own: mottling down to the pixel, and steep faces
+      // brighter, where slumping keeps exposing fresh, unweathered rock.
+      float mapTexel = 6.2831853 / float(textureSize(uColourMap, 0).x);
+      float own = uOwnTexture * smoothstep(1.5, 0.3, pixelAngle / mapTexel);
+      if (own > 0.0) {
+        vec3 broad = textureLod(uColourMap, vec2(uv.x, clamp(uv.y, 0.06, 0.94)), 6.0).rgb * uAlbedoBoost;
+        float freq = uErosionFreq * 0.7;
+        int octaves = int(clamp(log2(0.5 / max(pixelAngle * freq, 1e-12)), 1.0, 9.0));
+        float mottle = fbmd(dir * freq + 31.0, octaves, 2.03, 0.6).x;
+        float steep = 1.0 - max(dot(normal, dir), 0.0);
+        vec3 own3 = broad * (1.0 + mottle * 0.5) * (1.0 + 0.9 * smoothstep(0.03, 0.25, steep));
+        albedo = mix(albedo, own3, own);
+      }
+    }
     // Kept deliberately gentle. Relief and its shadows are what make a crater
     // read as a crater; colour marks are a supporting cue, and pushed any harder
     // they turn a cratered plain into a field of painted spots.
@@ -2006,6 +2024,7 @@ export class Planet {
         uHasDem: { value: 0 },
         uHasNormal: { value: 0 },
         uHasColourMap: { value: 0 },
+        uOwnTexture: { value: spec.ownTexture ?? 0 },
         uHasNight: { value: 0 },
         uHasOcean: { value: 0 },
         ...paletteUniforms(spec),
