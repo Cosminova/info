@@ -2202,6 +2202,15 @@ function veilSky(day) {
  * Read back asynchronously: a walker crosses a metre a frame at a run, and a
  * synchronous read every frame stalls the whole pipeline while it does.
  */
+/**
+ * On foot the mesh under you holds its full detail whatever the frame rate:
+ * its vertex spacing sets how high the ground is drawn, and letting quality
+ * coarsen it lifted and lowered a walker standing still by a metre and more.
+ */
+function walkingDetail() {
+  return controls.mode === 'walk' ? 1 : null;
+}
+
 const walkProbe = { key: null, dirs: Array.from({ length: 15 }, () => new Vector3()), km: null, at: 0, last: 0, dir: new Vector3() };
 const walkRight = new Vector3();
 function walkOnGround(surface, key, now) {
@@ -3453,8 +3462,8 @@ function frame(now) {
       cameraLocal: tmpCameraLocal,
       sunLocal: tmpSunLocal,
       pixelsPerRadian,
-      detailScale: quality.terrainDetail,
-      patchScale: quality.patchScale,
+      detailScale: walkingDetail() ?? quality.terrainDetail,
+      patchScale: walkingDetail() ?? quality.patchScale,
       microDetail: quality.microDetail,
       sunColour,
       sunIntensity: irradiance * exposureScale,
@@ -3590,8 +3599,8 @@ function frame(now) {
         cameraLocal: tmpCameraLocal,
         sunLocal: tmpSunLocal.copy(tmpSunLocal),
         pixelsPerRadian,
-        detailScale: quality.terrainDetail,
-        patchScale: quality.patchScale,
+        detailScale: walkingDetail() ?? quality.terrainDetail,
+        patchScale: walkingDetail() ?? quality.patchScale,
         microDetail: quality.microDetail,
         sunColour,
         sunIntensity: exoSunIntensity(exoFlux(hostLum, au), exoReference, state.exposure),
@@ -3622,8 +3631,8 @@ function frame(now) {
         cameraLocal: tmpCameraLocal,
         sunLocal: tmpSunLocal,
         pixelsPerRadian,
-        detailScale: quality.terrainDetail,
-        patchScale: quality.patchScale,
+        detailScale: walkingDetail() ?? quality.terrainDetail,
+        patchScale: walkingDetail() ?? quality.patchScale,
         microDetail: quality.microDetail,
         sunColour,
         sunIntensity: exoSunIntensity(exoFlux(hostLum, au), exoReference, state.exposure),
