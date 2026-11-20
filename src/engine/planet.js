@@ -1256,14 +1256,15 @@ uniform float uWaveTime;
 
     // Stones and soil underfoot, on dry ground and only where a pixel is small
     // enough to show them.
+    float terrainSteep = 1.0 - max(dot(normal, dir), 0.0);
     float detailShade = 1.0;
     if (uRockDensity > 0.001) {
       // The mean of the footprint's two sides rather than its long one: fading
       // on the long side clears the stones off the ground twenty metres out.
       float footprintM = length(vRel) * 1000.0 / uPixelsPerRadian * sqrt(footprintScale);
-      if (footprintM < 200.0) {
+      if (footprintM < mix(200.0, 1200.0, uGroundRelief)) {
         float sea = uHasOcean > 0.5 ? wrapTexture(uOceanMap, uv).r : wet;
-        detailShade = groundDetail(dir, (uCameraRel + vRel) * 1000.0, vHeight * 1000.0, footprintM, (1.0 - sea) * (1.0 - vSkirt), normal);
+        detailShade = groundDetail(dir, (uCameraRel + vRel) * 1000.0, vHeight * 1000.0, footprintM, (1.0 - sea) * (1.0 - vSkirt), view, normal);
       }
     }
 
@@ -1306,9 +1307,9 @@ uniform float uWaveTime;
     albedo *= 1.0 + craterMarks.x * uMarkContrast * 0.3;
     albedo *= 1.0 - craterMarks.y * uMarkContrast * 0.12;
     albedo *= 1.0 + fractureDepth * uFractureTint;
-    albedo *= detailShade;
-
-    float steep = 1.0 - max(dot(normal, dir), 0.0);
+    albedo *= mix(detailShade, 1.0, uGroundRelief);
+    // Enhanced materials use geological slope rather than individual grains.
+    float steep = mix(1.0 - max(dot(normal, dir), 0.0), terrainSteep, uGroundRelief);
     if (uTerrain > 0.00001 && uHasColourMap < 0.5) {
       // Height above the shore, in units of the world's relief: bare rock on
       // the high ground and, on a world cold enough to keep ice caps, snow on
@@ -1336,6 +1337,9 @@ uniform float uWaveTime;
       vec3 shelf = mix(albedo * 0.55 + uSeaShallow * 0.6, uSeaShallow, 0.55);
       albedo = mix(albedo, mix(shelf, uSeaDeep, deep), wet);
     }
+
+    // Apply grain and crevice contrast AFTER broad geological colour mixing.
+    albedo *= mix(1.0, detailShade, uGroundRelief);
 
     float mu0 = dot(normal, uSunDir);
     float mu = max(dot(normal, view), 0.02);
@@ -2295,6 +2299,7 @@ export class Planet {
             ?? ((spec.banding ?? 0) > 0 || this.radius > 20000 ? 0 : spec.atmosphere ? 0.3 : 0.6),
         },
         uStones: { value: spec.stones ?? 1 },
+        uGroundRelief: { value: spec.groundRelief ?? 0 },
         ...groundTextureUniforms(),
       },
       vertexShader: VERTEX,
@@ -2766,7 +2771,7 @@ export class Planet {
    * The plane the ground textures are laid on: tangent at a point near the
    * camera and kept there until the camera has gone far enough that the
    * planet's curve would tilt it noticeably. The anchor's place on it is
-   * worked out here in doubles and wrapped to the 1024 m the textures repeat
+   * worked out here in doubles and wrapped to the period the textures repeat
    * over, so the shader only ever adds small numbers to it.
    */
   _placeGroundMap(anchor) {
@@ -2788,7 +2793,8 @@ export class Planet {
       );
     }
     const offset = anchor.clone().sub(map.origin).multiplyScalar(1000);
-    const wrap = (v) => v - Math.floor(v / 1024) * 1024;
+    const period = this.spec.groundRelief ? 8192 : 1024;
+    const wrap = (v) => v - Math.floor(v / period) * period;
     u.uMapFrac.value.set(wrap(offset.dot(map.t)), wrap(offset.dot(map.b)), wrap(offset.dot(map.n)));
   }
 

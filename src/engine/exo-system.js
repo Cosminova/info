@@ -72,6 +72,8 @@ function airDensity(pressureBar) {
 function specFromPlanet(entry, described, hostKey) {
   const gaseous = described.gaseous;
   const palette = paletteArrays(described);
+  // An artistic surface preset, not a claim about this uncharted planet.
+  const gliese12b = exoKey(entry.name) === 'exo:gliese-12-b';
   const airless = described.volatiles === 'airless';
   const random = seeded(hashName(`${entry.name}:geo`));
   // A starting guess only. The waterline that actually floods the fraction the
@@ -104,7 +106,9 @@ function specFromPlanet(entry, described, hostKey) {
     // with features about ten kilometres across.
     erosion: gaseous ? 0 : clamp(described.radiusKm * 0.0003, 0.8, 3),
     erosionFreq: gaseous ? 400 : Math.round(described.radiusKm / 10),
-    rockDensity: gaseous ? 0 : 0.5,
+    rockDensity: gaseous ? 0 : gliese12b ? 0.85 : 0.5,
+    groundRelief: gliese12b ? 1 : 0,
+    slopeRock: gliese12b ? 0.28 : undefined,
     // Mesas and stepped cliffs, strongest on dry worlds where nothing fills
     // the steps back in; benches a few hundred metres high.
     // Benched mesa country is a local landform, not a world's whole surface:
@@ -116,8 +120,12 @@ function specFromPlanet(entry, described, hostKey) {
     paletteFreq: gaseous ? 2.2 : described.provinceScale,
     photometry: gaseous ? 0.1 : 0.75,
     albedoBoost: gaseous ? 1.15 : 1.25,
-    iceLatitude: described.icecapLatitude,
-    palette,
+    iceLatitude: gliese12b ? 0 : described.icecapLatitude,
+    // Warm grey basalt, weathered ochre and pale mineral dust; no violet tint.
+    palette: gliese12b ? [
+      [0.36, 0.31, 0.25], [0.20, 0.18, 0.155],
+      [0.48, 0.42, 0.34], [0.74, 0.73, 0.69],
+    ] : palette,
     // Zonal cloud instead of continents. Without it a giant is drawn with the
     // blotchy field meant for rock and reads as a mottled ball.
     banding: gaseous ? described.bandScale || 1 : 0,
