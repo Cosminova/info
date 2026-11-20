@@ -2302,3 +2302,25 @@ html.is-touch .flight-hint {
     justify-content: center;
   }
 }
+
+/* System preview: a plan view of what goes round what. The strip of previews
+   scrolls sideways; without min-width it widens the whole tree column instead. */
+.system-tree { grid-template-columns: minmax(0, 1fr); }
+.system-previews { min-width: 0; }
+.system-orrery {
+  display: block;
+  width: 100%;
+  max-width: 240px;
+  margin: 8px auto 0;
+  aspect-ratio: 1;
+  background: radial-gradient(circle at 50% 50%, rgba(40, 52, 72, 0.55), rgba(6, 9, 15, 0.2) 70%);
+  border-radius: 50%;
+}
+.system-orrery .orrery-orbit { fill: none; stroke: rgba(158, 182, 201, 0.18); stroke-width: 0.6; }
+.system-orrery .orrery-moon-orbit { fill: none; stroke: rgba(158, 182, 201, 0.12); stroke-width: 0.4; }
+.system-orrery .orrery-glow { opacity: 0.25; }
+.system-orrery .orrery-disk { fill: none; stroke: rgba(255, 170, 90, 0.55); stroke-width: 2.2; }
+.system-orrery .orrery-ring-active { fill: none; stroke: #7cc4ff; stroke-width: 1; }
+.system-orrery .orrery-body { cursor: pointer; outline: none; }
+.system-orrery .orrery-body:hover circle:last-of-type,
+.system-orrery .orrery-body:focus-visible circle:last-of-type { stroke: #fff; stroke-width: 0.8; }

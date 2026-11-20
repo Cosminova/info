@@ -14,6 +14,7 @@ import { equatorialToVector } from '../astro.js';
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const IDENTITY = new Quaternion();
 const ZERO = Object.freeze(new Vector3());
+const TILT_AXIS = new Vector3();
 
 /**
  * The key a planet or moon of another star is known by, everywhere.
@@ -96,7 +97,7 @@ export function specFromPlanet(entry, described, hostKey) {
     rotationHours: described.rotationHours,
     tiltDeg: described.tiltDeg,
     craterFreq: gaseous ? 80 : Math.round(260 * described.craterScale),
-    craterOctaves: gaseous ? 0 : Math.min(described.craterOctaves,character.kind==='cratered'?5:3),
+    craterOctaves: gaseous ? 0 : Math.min(described.craterOctaves,character.kind==='cratered'?4:2),
     craterDepth: described.craterDepth,
     craterDensity: described.craterDensity * (character.craterFactor ?? 1),
     roughness: described.roughness,
@@ -123,14 +124,14 @@ export function specFromPlanet(entry, described, hostKey) {
     // the steps back in; benches a few hundred metres high.
     // Benched mesa country is a local landform, not a world's whole surface:
     // laid over everything it turned the land into contour lines.
-    terrace: gaseous ? 0 : character.kind==='rifted' ? .4 : clamp((described.terrace ?? 0) * (oceanFraction > 0.6 ? 0.4 : 1) * 1.3 - 0.8, 0, 0.45),
+    terrace: gaseous ? 0 : character.terrace ?? clamp((described.terrace ?? 0) * (oceanFraction > 0.6 ? 0.4 : 1) * 1.3 - 0.8, 0, 0.45),
     terraceKm: 0.12 + ((described.terrace ?? 0) * 13.7 % 1) * 0.5,
     // How large the surface provinces are: a world of a few continents or one
     // of many islands.
     paletteFreq: gaseous ? 1.1 + appearance.bandScale * 1.3 : described.provinceScale * appearance.continentScale,
     photometry: gaseous ? 0.1 : gliese12b ? 0.25 : 0.75,
     albedoBoost: 1.05,
-    iceLatitude: gaseous || gliese12b ? 0 : character.kind==='glacial' ? .45 : described.temperatureK<255 ? Math.max(.75,described.icecapLatitude) : 0,
+    iceLatitude: gaseous || gliese12b ? 0 : character.iceLatitude ?? (described.temperatureK<255 ? Math.max(.75,described.icecapLatitude) : 0),
     // Warm grey basalt, weathered ochre and pale mineral dust; no violet tint.
     palette: gliese12b ? [
       [0.36, 0.31, 0.25], [0.20, 0.18, 0.155],
@@ -144,8 +145,8 @@ export function specFromPlanet(entry, described, hostKey) {
     polarSmooth: gaseous ? 1 : 0,
     seaLevelKm: gliese12b ? 1.1 : seaLevelKm,
     oceanFraction,
-    seaDeep: gliese12b ? [0.012,0.065,0.11] : described.temperatureK<200 ? [0.065,.05,.025] : [.008,.035,.065],
-    seaShallow: gliese12b ? [0.035,0.15,0.17] : described.temperatureK<200 ? [.18,.13,.07] : [.035,.13,.16],
+    seaDeep: gliese12b ? [0.012,0.065,0.11] : character.sea?.deep ?? (described.temperatureK<200 ? [0.065,.05,.025] : [.008,.035,.065]),
+    seaShallow: gliese12b ? [0.035,0.15,0.17] : character.sea?.shallow ?? (described.temperatureK<200 ? [.18,.13,.07] : [.035,.13,.16]),
     // Sun glint is what tells you at a glance that the blue is liquid.
     specular: seaLevelKm > 0 ? 0.9 : 0,
     // Gas giants carry their weather in their own palette already; this is the
@@ -190,7 +191,10 @@ export function specFromMoon(entry, described, parentKey) {
   return {...spec, parent:parentKey, atmosphere:null, cloudCover:0,
     seaLevelKm:0, oceanFraction:0, inclinationDeg:entry.inclinationDeg,
     craterFreq:clamp(radiusKm*.12*described.craterScale,8,260),
-    craterOctaves:spec.landscapeKind==='cratered'?5:3,
+    // Four octaves of craters at most: each is a full cell walk per pixel.
+    craterOctaves:spec.landscapeKind==='cratered'?4:2,
+    // Some moons are captured or shattered rubble rather than round worlds.
+    irregular:radiusKm<1500&&hashAngle(`${entry.name}:shape`)<Math.PI*.5?.12+hashAngle(`${entry.name}:lumps`)/36:undefined,
     maxPatches:1000,maxLevel:18,patchResolution:16,pixelsPerQuad:7};
 }
 
@@ -260,8 +264,14 @@ export class ExoSystem {
       // Giants out past where ice survives; a hot Jupiter's would have boiled off.
       // A rocky world keeps one now and then too, from a moon torn apart.
       const ringRoll = hashAngle(`${entry.name}:rings`);
-      if ((spec.banding && spec.aAu > 0.6 && ringRoll < Math.PI * 1.1)
-        || (!spec.banding && spec.aAu > 0.3 && ringRoll < Math.PI * 0.16)) {
+      const ringed = (spec.banding && spec.aAu > 0.6 && ringRoll < Math.PI * 1.1)
+        || (!spec.banding && spec.aAu > 0.3 && ringRoll < Math.PI * 0.16);
+      // An axial tilt, so the star climbs above the equator through the year.
+      // Untilted, rings in the equator would be lit edge-on forever, and black.
+      const tilt = (ringed ? 0.22 + hashAngle(`${entry.name}:tilt`) / 14 : hashAngle(`${entry.name}:tilt`) / 18)
+        * (hashAngle(`${entry.name}:tilt-sign`) < Math.PI ? 1 : -1);
+      planet.spin.quaternion.setFromAxisAngle(TILT_AXIS.set(Math.cos(item.angle0), 0, Math.sin(item.angle0)), tilt);
+      if (ringed) {
         item.rings = ringSystemFor(spec, hashName(`${entry.name}:rings`));
         planet.spin.add(item.rings.mesh);
         planet.setRings(item.rings.texture, item.rings.innerKm, item.rings.outerKm);

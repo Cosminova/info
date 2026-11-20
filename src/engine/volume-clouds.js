@@ -32,7 +32,12 @@ export function createVolumeClouds(surface, radius, baseKm, thicknessKm) {
       float cloudWeather(vec3 d,float footprint){
         vec3 q=d*uCloudFreq+uCloudSeed;
         vec3 warp=vec3(noise3(q*.65),noise3(q*.65+17.1),noise3(q*.65-9.3))-.5;
-        q=(q+warp*1.4)*3.5;
+        q+=warp*1.4;
+        // Weather systems at the planet's own cloud scale decide where cloud
+        // is; the octaves below only tear its edges. Without the broad term
+        // every world came out in the same small scattered puffs.
+        float systems=noise3(q*.9)*.62+noise3(q*2.1+5.3)*.38;
+        q*=3.5;
         float sum=0.0,amp=.55,freq=3.5,total=0.0;
         mat3 rot=mat3(0.,.8,.6,-.8,.36,-.48,-.6,-.48,.64);
         for(int i=0;i<6;i++){
@@ -41,8 +46,11 @@ export function createVolumeClouds(surface, radius, baseKm, thicknessKm) {
           sum+=amp*mix(.5,band,resolved);total+=amp;
           q=rot*q*2.07+11.7;freq*=2.07;amp*=.58;
         }
-        // Broad fronts with fine torn edges, not a binary opaque mask.
-        return smoothstep(.62-uCloudCover*.25,.82-uCloudCover*.25,sum/total);
+        // Broad fronts with fine torn edges, not a binary opaque mask. The
+        // threshold spans the whole range, from a few clouds to a closed deck.
+        float v=mix(systems,sum/total,.42);
+        float t=mix(.74,.26,uCloudCover);
+        return smoothstep(t-.06,t+.08,v);
       }
       float density(vec3 p,float weather){
         float h=(length(p)-uCloudBase)/(uCloudTop-uCloudBase);

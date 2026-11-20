@@ -1524,6 +1524,14 @@ function membersOf(key) {
         .sort((a, b) => b.radiusKm - a.radiusKm);
     }
   }
+  // A planet of a system not loaded yet: its moons from the same record, so
+  // they are listed under it from the moment the system panel opens.
+  const record = dest?.system?.planets?.find((planet) => exoKey(planet.name) === key);
+  if (record) {
+    return (record.moons ?? [])
+      .map((moon) => ({ key: exoKey(moon.name), name: moon.name, radiusKm: (moon.radiusEarth ?? 0.2) * EARTH_RADIUS_KM }))
+      .sort((a, b) => b.radiusKm - a.radiusKm);
+  }
   // The same star before its system has been loaded: the record is enough to
   // list what is there, so the panel is filled on arrival rather than a frame
   // later.
@@ -2104,6 +2112,9 @@ let groundExposure = 1;
 const groundProbeDirs = [new Vector3()];
 const GROUND_CLEARANCE_KM = 0.004;
 const SHIP_CLEARANCE_KM = 0.03;
+// Orbiting and flying the eye is not on a footpath, and a little more room
+// covers the mesh between its vertices sagging over the probed point.
+const ORBIT_CLEARANCE_KM = 0.015;
 
 function surfaceOf(key) {
   if (!key) return null;
@@ -2156,7 +2167,21 @@ function groundUnder(key, point, now) {
     };
     // Probe only near a surface, caching stationary answers. A cached height
     // from another direction cannot safely constrain this frame's position.
-    settle(surface.planet.groundHeightsKm(renderer, groundProbeDirs)[0]);
+    let km = surface.planet.groundHeightsKm(renderer, groundProbeDirs)[0];
+    // The mesh under the camera may still be a coarse patch the quadtree has
+    // not split yet, and a coarse patch bridges valleys above the true ground.
+    // Its relief is the smoothed one, so the floor is the higher of the two.
+    if (altitude < 3 && Number.isFinite(km)) {
+      const probeAngle = surface.planet._probeMaterial?.uniforms.uProbePixelAngle;
+      const pixels = uniforms.uPixelsPerRadian?.value ?? 1000;
+      if (probeAngle) {
+        probeAngle.value = Math.max((Math.max(altitude, 0.05) / surface.radius / pixels) * 16, 0.02 / surface.radius);
+        const smoothed = surface.planet.groundHeightsKm(renderer, groundProbeDirs)[0];
+        probeAngle.value = 0;
+        if (Number.isFinite(smoothed) && Math.abs(smoothed) < surface.radius * 0.25) km = Math.max(km, smoothed);
+      }
+    }
+    settle(km);
     cameraGround.at = now;
     cameraGround.dir.copy(local);
   }
@@ -2198,7 +2223,7 @@ function floorBeforeControls(resolved, now) {
   const ground = groundUnder(resolved.key, controls.worldPosition, now);
   if (!ground) return;
   const radius = resolved.radius;
-  const floor = (ground.radius + ground.groundKm + GROUND_CLEARANCE_KM) / radius;
+  const floor = (ground.radius + ground.groundKm + ORBIT_CLEARANCE_KM) / radius;
   controls.minDistanceRadii = Math.max(1.000001, floor);
   controls.groundFloor = true;
   if (controls.distanceRadii < controls.minDistanceRadii) controls.distanceRadii = controls.minDistanceRadii;
@@ -2399,12 +2424,12 @@ function orbitFloorAfterControls(now, resolved) {
   if (state.viewFromEarth || state.riding) return;
   const ground = groundUnder(resolved.key, controls.worldPosition, now);
   if (!ground) return;
-  const floor = ground.radius + ground.groundKm + GROUND_CLEARANCE_KM;
+  const floor = ground.radius + ground.groundKm + ORBIT_CLEARANCE_KM;
   if (ground.distance >= floor) return;
   controls.distanceRadii = floor / Math.max(controls.targetRadius,1e-9);
   controls.originOffset.copy(ground.up).multiplyScalar(floor);
   controls.worldPosition.copy(controls.targetPosition).add(controls.originOffset);
-  cameraGround.altitudeKm = GROUND_CLEARANCE_KM;
+  cameraGround.altitudeKm = ORBIT_CLEARANCE_KM;
 }
 
 function updateRoamFrame() {
@@ -3699,8 +3724,11 @@ function frame(now) {
         item.planet.calibrateSeaLevel(renderer, item.spec.oceanFraction);
       }
       placeRelative(item.planet.group, item.world, item.spec.key);
-      tmpSunLocal.copy(item.local).negate().normalize();
-      tmpViewLocal.copy(tmpViewDir).normalize();
+      // Into the planet's own tilted frame, which the surface and rings are drawn in.
+      const unspin = tmpBodyInverse.copy(item.planet.spin.quaternion).invert();
+      tmpCameraLocal.applyQuaternion(unspin);
+      tmpSunLocal.copy(item.local).negate().normalize().applyQuaternion(unspin);
+      tmpViewLocal.copy(tmpViewDir).normalize().applyQuaternion(unspin);
       const au = item.spec.orbitKm / 149597870.7;
       patchTotal += item.planet.update({
         cameraLocal: tmpCameraLocal,
@@ -4134,6 +4162,29 @@ window.cosminova = {
     controls.mode = 'orbit';
     return { key, radiusKm: item.spec.radiusKm };
   },
+  /**
+   * Builds the invented system of star `seed` as if found that far out, for
+   * checking what the generator makes. Returns the star's key and its planets.
+   */
+  visitInvented(seed, distancePc = 50) {
+    const world = new Vector3(1, 0.3, 0.2).normalize().multiplyScalar(distancePc * PC_KM);
+    return activateStar({ kind: 'gen', seed, absMag: 4 + (seed % 7), world });
+  },
+  /** Hangs over a body's pole, slightly off it so the view is not edge-on to the pinch. */
+  lookAtPole(key, distanceRadii = 1.03, south = false, offDeg = 2) {
+    selectTarget(key, { fly: false });
+    controls.stopFlight();
+    const orientation = surfaceOf(key)?.orientation;
+    if (!orientation) return null;
+    const dir = new Vector3(Math.sin((offDeg * Math.PI) / 180), south ? -1 : 1, 0).normalize().applyQuaternion(orientation);
+    controls.distanceRadii = distanceRadii;
+    controls.pitch = Math.asin(clamp(dir.y, -1, 1));
+    controls.yaw = Math.atan2(dir.x, dir.z);
+    controls.lookYaw = 0;
+    controls.lookPitch = 0;
+    controls.mode = 'orbit';
+    return key;
+  },
   /** Frames a galaxy on the face of its disc rather than edge-on to it. */
   lookAtGalaxy(key, distanceRadii = 3, tiltDeg = 0) {
     const resolved = resolveWorld(key);
@@ -4538,6 +4589,7 @@ window.cosminova = {
       target: state.target,
       altitudeKm: controls.altitudeKm,
       distanceRadii: controls.distanceRadii,
+      groundKm: cameraGround.key === state.target ? cameraGround.km : null,
       patches: patchTotal,
       craterOctaves: planets.get(state.target)?.material.uniforms.uCraterOctaves.value ?? 0,
       demWidth: planets.get(state.target)?.demWidth ?? 0,

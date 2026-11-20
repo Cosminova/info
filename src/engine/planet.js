@@ -709,7 +709,9 @@ const HEIGHT_GLSL = /* glsl */ `
     // Vertices are several pixels apart by design, so the level follows the quad
     // spacing rather than the pixel spacing.
     float lod = max(log2(max(pixelAngle * 5.0, 1e-9) / texelAngle), 0.0) + uDemLodBias;
-    lod = max(lod, 0.0);
+    // Near a pole the columns converge; see wrapTexture.
+    float polar = smoothstep(0.976, 0.999, abs(d.y));
+    lod = max(lod, polar * log2(max(0.35 / max(sqrt(1.0 - d.y * d.y), 1e-4), 1.0)));
     vec2 uv = dirToUv(d);
     float filtered = textureLod(uDemMap, uv, lod).r;
     if (lod >= 1.0) return filtered;
@@ -985,12 +987,28 @@ uniform float uWaveTime;
   // the hardware reads that as the whole map in one pixel: the coarsest mip,
   // drawn as a dashed line down the globe. The gradient taken the short way
   // round the wrap is the true one.
+  //
+  // Towards a pole a texel column is 1/cos(latitude) times narrower on the
+  // ground than it is tall, and the source maps fill those columns by
+  // stretching the last good rows: seen close, they converge as radial
+  // streaks. The footprint is widened to span that stretch, so the columns
+  // are averaged into the ground they all came from.
   vec4 wrapTexture(sampler2D map, vec2 uv) {
     vec2 gx = dFdx(uv);
     vec2 gy = dFdy(uv);
     gx.x -= floor(gx.x + 0.5);
     gy.x -= floor(gy.x + 0.5);
-    return textureGrad(map, uv, gx, gy);
+    //
+    // Magnified past a texel, a compressed map shows its own blocks and the
+    // texel grid, so no map is read finer than two of its texels: the
+    // procedural detail is what carries the ground below that.
+    float width = float(textureSize(map, 0).x);
+    float across = max(cos((uv.y - 0.5) * 3.14159265), 1e-4);
+    float polar = smoothstep(0.86, 0.97, abs(uv.y - 0.5) * 2.0);
+    float need = max(mix(0.0, 0.35 / across, polar), 2.0) / width;
+    float have = max(max(length(gx), length(gy)), 1e-9);
+    float grow = max(need / have, 1.0);
+    return textureGrad(map, uv, gx * grow, gy * grow);
   }
 
   /**
@@ -1281,7 +1299,8 @@ uniform float uWaveTime;
       vec2 normalUv = dirToUv(dir);
       vec4 sampled = wrapTexture(uNormalMap, normalUv);
       float normalTexel = 6.2831853 / float(textureSize(uNormalMap, 0).x);
-      float magnified = 1.0 - smoothstep(0.5, 1.0, pixelAngle / normalTexel);
+      float magnified = (1.0 - smoothstep(0.5, 1.0, pixelAngle / normalTexel))
+        * (1.0 - smoothstep(0.976, 0.999, abs(dir.y)));
       if (magnified > 0.0) sampled = mix(sampled, bilinearExact(uNormalMap, normalUv), magnified);
       vec3 packed = normalize(sampled.xyz * 2.0 - 1.0);
       vec3 north = normalize(vec3(0.0, 1.0, 0.0) - dir * dir.y);

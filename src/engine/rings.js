@@ -178,10 +178,13 @@ const FRAGMENT = /* glsl */ `
     // the dependence on the Sun's and the viewer's elevation, and the inversion
     // when back-lit — doing the work.
     float brightness = clamp(scattered * uAlbedo * 0.25 * uMultipleScattering, 0.0, 4.0);
+    // Ice particles backscatter: with the star behind the viewer the rings
+    // flare, the opposition surge Saturn's show near zero phase.
+    brightness *= 1.0 + 0.8 * pow(max(dot(view, uSunDir), 0.0), 8.0);
 
     // Finite particle thickness and reflected planet light keep grazing rings
     // readable without removing the planet's shadow or backlighting.
-    float planetshine = 0.035 * pow(uPlanetRadius / r, 2.0);
+    float planetshine = 0.06 * pow(uPlanetRadius / r, 2.0) + 0.012;
     vec3 colour = ring.rgb * uSunColour * uSunIntensity * (brightness * shadow + planetshine);
 
     // Opacity as the viewer sees it: a grazing view looks through a longer path

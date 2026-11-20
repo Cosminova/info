@@ -1094,6 +1094,70 @@ export function createExplorerUI(config) {
 
   // ------------------------------------------------------------------ system
 
+  /**
+   * A small plan view of the system: the primary in the middle, each member on
+   * a ring of its own in the order the tree lists them, and moons clustered
+   * round their planet. Not to scale; it shows what is there and what goes
+   * round what, and every body in it can be clicked.
+   */
+  function systemOrrery(root, rootResolved) {
+    const NS = 'http://www.w3.org/2000/svg';
+    const SIZE = 220, MID = SIZE / 2;
+    const node = (tag, attrs) => {
+      const n = document.createElementNS(NS, tag);
+      for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+      return n;
+    };
+    const svg = node('svg', { viewBox: `0 0 ${SIZE} ${SIZE}`, class: 'system-orrery', role: 'img', 'aria-label': `${root.name} system` });
+    const tintOf = (key, fallback) => {
+      const rgb = resolveWorld(key)?.spec?.palette?.[0];
+      return rgb ? `rgb(${rgb.map((c) => Math.round(c * 255)).join(',')})` : fallback;
+    };
+    const kindOf = (row) => {
+      const kind = resolveWorld(row.key)?.kind;
+      if (row.key.startsWith('bh:') || kind === 'black-hole') return 'hole';
+      if (kind === 'star' || row.note?.includes('star')) return 'star';
+      return 'body';
+    };
+    const bodyDot = (row, x, y, r, kind) => {
+      const group = node('g', { class: `orrery-body is-${kind}${state.target === row.key ? ' is-active' : ''}`, tabindex: '0' });
+      if (kind === 'hole') {
+        group.append(node('circle', { cx: x, cy: y, r: r * 1.9, class: 'orrery-disk' }));
+        group.append(node('circle', { cx: x, cy: y, r, fill: '#000', stroke: 'rgba(255,190,120,0.9)', 'stroke-width': 1.2 }));
+      } else {
+        if (kind === 'star') group.append(node('circle', { cx: x, cy: y, r: r * 2.2, class: 'orrery-glow', fill: tintOf(row.key, '#ffcf7a') }));
+        group.append(node('circle', { cx: x, cy: y, r, fill: kind === 'star' ? tintOf(row.key, '#ffd890') : tintOf(row.key, '#8fa3b8') }));
+      }
+      if (state.target === row.key) group.append(node('circle', { cx: x, cy: y, r: r + 3, class: 'orrery-ring-active' }));
+      const title = node('title', {});
+      title.textContent = row.name;
+      group.append(title);
+      const go = () => hooks.selectTarget(row.key, { fly: true });
+      group.addEventListener('click', go);
+      group.addEventListener('keydown', (event) => { if (event.key === 'Enter') go(); });
+      return group;
+    };
+    const rows = root.children.slice(0, 14);
+    const radiusPx = (km, kind) => (kind === 'star' ? 4.5 : Math.min(Math.max(Math.log10(Math.max(km ?? 1000, 100)) * 1.6 - 3.2, 1.6), 5.5));
+    rows.forEach((row, i) => {
+      const orbit = 22 + ((MID - 30) * (i + 1)) / Math.max(rows.length, 1);
+      svg.append(node('circle', { cx: MID, cy: MID, r: orbit, class: 'orrery-orbit' }));
+      const angle = (i * 2.399963) % (Math.PI * 2);
+      const x = MID + orbit * Math.cos(angle), y = MID + orbit * Math.sin(angle);
+      const kind = kindOf(row);
+      const r = radiusPx(row.radiusKm, kind);
+      (row.children ?? []).slice(0, 8).forEach((moon, j) => {
+        const reach = r + 4 + j * 2.2;
+        const a = j * 2.399963 + angle;
+        svg.append(node('circle', { cx: x, cy: y, r: reach, class: 'orrery-moon-orbit' }));
+        svg.append(bodyDot(moon, x + reach * Math.cos(a), y + reach * Math.sin(a), 1.4, kindOf(moon)));
+      });
+      svg.append(bodyDot(row, x, y, r, kind));
+    });
+    svg.append(bodyDot(root, MID, MID, kindOf(root) === 'body' ? 7 : 8, kindOf({ key: root.key, note: rootResolved?.kind === 'star' ? 'star' : '' })));
+    return svg;
+  }
+
   function buildSystemTree(resolved) {
     if (!resolved) return;
     const spec = resolved.spec;
@@ -1136,6 +1200,7 @@ export function createExplorerUI(config) {
       const previews=[root,...members.flatMap(row=>[row,...row.children])].slice(0,30);
       return [el('details',{class:'system-previews',open:true},[
         el('summary',{text:'System preview'}),
+        systemOrrery(root,rootResolved),
         el('div',{class:'system-preview-strip'},previews.map(preview))]),render(root)];
     });
   }

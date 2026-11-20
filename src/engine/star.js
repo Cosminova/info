@@ -481,17 +481,21 @@ export class Star {
     const discRadius = discPixels / 2;
     const blowout = 1 + 1.2 * (1 - clamp((discRadius - 15) / 120, 0, 1)) * clamp(light, 0, 1);
     this.material.uniforms.uIntensity.value = this.baseIntensity * blowout;
-    this.flare.visible = flare && this.mesh.visible && pixelsPerRadian > 0 && light > 0.002 && lensTransmission > 0.001;
+    // Every star whose disc is drawn has its glare: the camera's response to
+    // a bright source does not stop because the source is the one selected,
+    // or because a lens in front of it has dimmed it.
+    this.flare.visible = flare && this.mesh.visible && pixelsPerRadian > 0;
     if (this.flare.visible) {
       const discRadiusPx = discPixels / 2;
-      const flarePx = Math.max(110 + 400 * Math.log10(1 + light * 4), discRadiusPx * 2.4);
+      const flarePx = Math.max(110 + 400 * Math.log10(1 + Math.max(light, 0.05) * 4), discRadiusPx * 2.6);
       const flareScale = (flarePx * distanceKm) / pixelsPerRadian;
       const f = this.flareMaterial.uniforms;
       f.uScale.value = flareScale;
       f.uDiscFraction.value = clamp(this.radius / flareScale, 0, 0.9);
-      f.uSpikes.value = 1 - clamp((discRadiusPx - 4) / 30, 0, 1);
+      f.uSpikes.value = Math.max(1 - clamp((discRadiusPx - 4) / 30, 0, 1), 0.45);
       f.uResolved.value = clamp((discRadiusPx - 14) / 30, 0, 1);
-      f.uIntensity.value = Math.min(1.4, 0.85 * Math.pow(light, 0.6)) * (1 - 0.8 * f.uResolved.value) * visibility * lensTransmission;
+      f.uIntensity.value = Math.min(1.4, 0.85 * Math.pow(Math.max(light, 0.05), 0.6))
+        * (1 - 0.45 * f.uResolved.value) * Math.max(visibility, 0.2) * Math.max(lensTransmission, 0.35);
     }
   }
 }

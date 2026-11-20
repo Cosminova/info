@@ -194,6 +194,9 @@ export const GROUND_DETAIL_GLSL = /* glsl */ `
     // larger for weathering colour on faces seen from far off. Mountain
     // shape comes from geometry, not kilometre-wide pebble normals.
     const float SOIL[2] = float[2](512.0, 97.0);
+    // The two broad rock scales are kept to steep faces: blown up to hundreds
+    // of metres across open ground, a photograph of a rock reads as rounded
+    // blotches with the texture's own edges stepped through them.
     const float ROCK[4] = float[4](256.0, 37.0, 7.0, 2.0);
     float stony = mix(0.45, 1.0, uStones);
     for (int i = 0; i < 2; i++) {
@@ -206,7 +209,7 @@ export const GROUND_DETAIL_GLSL = /* glsl */ `
       if (i == 0) groundH = mix(0.5, t.y, f);
     }
     for (int i = 0; i < 4; i++) {
-      float f = fadeBelow(fp, 1024.0 / ROCK[i]) * weight;
+      float f = fadeBelow(fp, 1024.0 / ROCK[i]) * weight * (i >= 2 ? smoothstep(0.12, 0.3, rockBias) : 1.0);
       if (f < 0.01) continue;
       vec3 gs, rs;
       vec4 t = groundLayer(block, w, ROCK[i], viewLocal, i == 0 ? closeRelief * 0.015 : 0.0, gs, rs);
