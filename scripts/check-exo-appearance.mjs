@@ -1,0 +1,11 @@
+import fs from 'node:fs';import assert from 'node:assert/strict';import puppeteer from 'puppeteer-core';
+const out=process.env.OUT??'work/exo-appearance';fs.mkdirSync(out,{recursive:true});
+const browser=await puppeteer.launch({executablePath:'/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',args:['--headless=new','--no-sandbox'],defaultViewport:{width:1280,height:800}});
+const wait=ms=>new Promise(r=>setTimeout(r,ms));
+try{const page=await browser.newPage(),errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'){errors.push(m.text());console.error(m.text())}});await page.goto('http://localhost:5179/?home=0');await page.waitForFunction('window.cosminova?.ready',{timeout:180000});const results=[];
+for(const key of (process.env.KEYS??'exo:gliese-12-b').split(',')){
+ await page.evaluate(key=>{const s=window.cosminova;s.setQuality('high');s.setUiVisible(false);s.setRate(0);s.lookFromSun(key,3.5,55,15);},key);await wait(10000);
+ const r=await page.evaluate(async key=>{const s=window.cosminova;const start=performance.now(),f=s.stats().renderedFrames;const intervals=[];let last=start,frames=f;await new Promise(resolve=>{function tick(now){const rendered=s.stats().renderedFrames;if(rendered!==frames){intervals.push(now-last);last=now;frames=rendered;}if(now-start>6000)resolve();else requestAnimationFrame(tick);}requestAnimationFrame(tick);});intervals.sort((a,b)=>a-b);const p=s.exoSystem.get(key)?.planet;return {key,fps:(s.stats().renderedFrames-f)*1000/(performance.now()-start),p95ms:intervals[Math.floor(intervals.length*.95)],radius:p?.radius,seaLevel:p?.material.uniforms.uSeaLevelKm.value,glError:s.renderer.getContext().getError()};},key);assert.ok(r.radius>0);assert.equal(r.glError,0);results.push(r);await page.screenshot({path:out+'/'+key.replaceAll(':','-')+'.png'});
+ if(key==='exo:gliese-12-b'){await page.evaluate(()=>window.cosminova.lookFromSun('exo:gliese-12-b',2.4,55,15));await wait(1500);await page.screenshot({path:out+'/gliese-close.png'});}
+}
+assert.deepEqual(errors,[]);fs.writeFileSync(out+'/results.json',JSON.stringify({results,errors},null,2));console.log(JSON.stringify(results));}finally{await browser.close();}

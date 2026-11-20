@@ -96,7 +96,7 @@ export const TEST_WORLD_GLSL = /* glsl */ `
     bool interior = false;
     for(int j=0;j<7;j++) if(dot(d,testSites[j])>=0.9995) interior=true;
     if(!interior) {
-    vec4 continent = fbmd(d * 2.8 + 17.3, 5, 2.03, 0.47);
+    vec4 continent = fbmd(d * 2.8 + 17.3, 7, 2.03, 0.47);
     vec4 ridge = testLandform(d * 180.0 + 3.7, pixelAngle * 180.0);
     float filteredRidge=gLandFiltered;
     float mountain = smoothstep(0.02, 0.32, continent.x);
@@ -104,7 +104,8 @@ export const TEST_WORLD_GLSL = /* glsl */ `
     float mountainDerivative = 6.0 * mq * (1.0 - mq) / 0.30;
     t = vec4(1.4 + continent.x * 9.0 + ridge.x * ridge.x * mountain * 8.0 + hill.x * 0.22,
       continent.yzw * (25.2 + ridge.x * ridge.x * 22.4 * mountainDerivative) + ridge.yzw * (2880.0 * ridge.x * mountain) + hill.yzw * 41.8);
-    shadeHeight=1.4+continent.x*9.0+filteredRidge*filteredRidge*mountain*8.0
+    float filteredContinent=fbmd(d*2.8+17.3,int(clamp(log2(.35/max(pixelAngle*2.8,1e-8)),2.0,7.0)),2.03,.47).x;
+    shadeHeight=1.4+filteredContinent*9.0+filteredRidge*filteredRidge*mountain*8.0
       +hill.x*.22*(1.0-smoothstep(.0001,.001,pixelAngle));
     // Bounded crag amplitude; fine grain belongs in the material, not spiky mesh noise.
     // Metre-scale materials are filtered separately. Keep the geological
@@ -150,14 +151,19 @@ export const TEST_WORLD_GLSL = /* glsl */ `
     return t;
   }
   vec3 testBiomeColour(vec3 d, float height, float steep, float pixelAngle) {
-    float moisture = fbmd(d * 7.0 + 19.0, 3, 2.1, 0.5).x;
+    int colourOctaves=pixelAngle<.000015?3:int(clamp(log2(.4/max(pixelAngle*7.0,1e-8)),2.0,7.0));
+    float moisture;
+    if(pixelAngle<.000015)moisture=fbmd(d*7.0+19.0,3,2.1,.5).x;
+    else moisture=fbmd(d*7.0+19.0,colourOctaves,2.1,.5).x;
+    float weathering=moisture*.5;
+    if(pixelAngle>=.000015)weathering=fbmd(d*34.0+vec3(moisture*3.0,-moisture*.8,moisture*1.5)+11.2,int(clamp(log2(.4/max(pixelAngle*34.0,1e-8)),1.0,6.0)),2.07,.62).x;
     float cold = smoothstep(0.55, 0.9, abs(d.y));
-    vec3 green = mix(vec3(0.085,0.14,0.038), vec3(0.19,0.26,0.07), smoothstep(-0.2,0.25,moisture));
-    vec3 sand = vec3(0.48,0.31,0.15), stone = vec3(0.24,0.26,0.28);
-    vec3 c = mix(sand, green, smoothstep(-0.12,0.12,moisture));
+    vec3 green = mix(vec3(0.065,0.105,0.078), vec3(0.18,0.205,0.14), smoothstep(-0.2,0.25,moisture));
+    vec3 sand = vec3(0.38,0.31,0.235), stone = vec3(0.24,0.26,0.28);
+    vec3 c = mix(sand, green, smoothstep(-0.3,0.3,moisture));
     c = mix(c, vec3(0.27,0.25,0.15), cold);
     c = mix(c, vec3(0.67,0.72,0.73), smoothstep(0.82,0.96,abs(d.y)));
-    c = mix(c, vec3(0.61,0.48,0.29), 1.0-smoothstep(0.015,0.085,abs(height-1.1)));
+    c = mix(c, vec3(0.61,0.48,0.29), 1.0-smoothstep(0.002,0.012,abs(height-1.1)));
     c = mix(c, green, testRegion(d,1));
     c = mix(c, sand, testRegion(d,2));
     float beds = smoothstep(-.3,.3,moisture);
@@ -173,6 +179,7 @@ export const TEST_WORLD_GLSL = /* glsl */ `
     // individual snow pockets. Preserve altitude/slope snow when approaching.
     float regionalSnow=smoothstep(.64,.88,abs(d.y)+moisture*.12);
     snow=mix(snow,regionalSnow,smoothstep(.00015,.0008,pixelAngle));
-    return mix(c, vec3(0.80,0.83,0.83), snow);
+    c*=.88+weathering*.45;
+    return mix(c, vec3(0.72,0.76,0.77), snow);
   }
 `;

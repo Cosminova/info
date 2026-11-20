@@ -29,17 +29,32 @@ export function createVolumeClouds(surface, radius, baseKm, thicknessKm) {
         return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),
           mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+1.0),f.x),f.y),f.z);}
       vec2 span(vec3 o,vec3 d,float r){float b=dot(o,d),h=b*b-dot(o,o)+r*r;if(h<0.0)return vec2(-1.0);h=sqrt(h);return vec2(-b-h,-b+h);}
-      float density(vec3 p){
+      float cloudWeather(vec3 d,float footprint){
+        vec3 q=d*uCloudFreq+uCloudSeed;
+        vec3 warp=vec3(noise3(q*.65),noise3(q*.65+17.1),noise3(q*.65-9.3))-.5;
+        q=(q+warp*1.4)*3.5;
+        float sum=0.0,amp=.55,freq=3.5,total=0.0;
+        mat3 rot=mat3(0.,.8,.6,-.8,.36,-.48,-.6,-.48,.64);
+        for(int i=0;i<6;i++){
+          float resolved=1.0-smoothstep(.25,.75,footprint*uCloudFreq*freq);
+          float band=.5;if(resolved>.001)band=noise3(q);
+          sum+=amp*mix(.5,band,resolved);total+=amp;
+          q=rot*q*2.07+11.7;freq*=2.07;amp*=.58;
+        }
+        // Broad fronts with fine torn edges, not a binary opaque mask.
+        return smoothstep(.62-uCloudCover*.25,.82-uCloudCover*.25,sum/total);
+      }
+      float density(vec3 p,float weather){
         float h=(length(p)-uCloudBase)/(uCloudTop-uCloudBase);
         if(h<=0.0||h>=1.0)return 0.0;
-        vec3 q=normalize(p)*uCloudFreq*vec3(1.0,2.4,1.0)+uCloudSeed;
-        float weather=noise3(q)*.7+noise3(q*2.13+7.0)*.3;
-        float cover=smoothstep(.7-uCloudCover*.45,.9-uCloudCover*.45,weather);
-        float billow=noise3(p*.23+uCloudSeed)*.7+noise3(p*.61+19.0)*.3;
         float footprint=length(p-uCameraLocal)/max(uPixelsPerRadian,1.0);
-        billow=mix(billow,.55,smoothstep(.2,2.0,footprint));
+        float billow=.55;
+        if(footprint<2.0){
+          billow=noise3(p*.23+uCloudSeed)*.7+noise3(p*.61+19.0)*.3;
+          billow=mix(billow,.55,smoothstep(.2,2.0,footprint));
+        }
         float shape=smoothstep(0.0,.18,h)*(1.0-smoothstep(.55,1.0,h));
-        return cover*shape*smoothstep(.22,.65,billow)*1.4;
+        return weather*shape*smoothstep(.22,.65,billow)*(.35+.4*weather*weather);
       }
       void main(){
         vec3 eye=uCameraLocal,ray=normalize(vLocal-eye);
@@ -53,16 +68,24 @@ export function createVolumeClouds(surface, radius, baseKm, thicknessKm) {
         if(end<=start)discard;
         // Cap grazing distance; no long march through the hollow globe.
         end=min(end,start+180.0);
-        float stepKm=(end-start)/12.0,trans=1.0,first=end;
+        float footprint=(start+end)*.5/max(uPixelsPerRadian,1.0);
+        // The weather column is shared by the short ray segment. Four samples
+        // suffice once its vertical structure is below a pixel; opacity remains
+        // corrected by the actual step length rather than the sample count.
+        float steps=footprint>4.0?4.0:8.0;
+        float weather=cloudWeather(normalize(eye+ray*((start+end)*.5)),footprint/uRadius);
+        if(weather<.002)discard;
+        float stepKm=(end-start)/steps,trans=1.0,first=end;
         vec3 sum=vec3(0.0);
-        for(int i=0;i<12;i++){
+        for(int i=0;i<8;i++){
+          if(float(i)>=steps)break;
           float t=start+(float(i)+.5)*stepKm;vec3 p=eye+ray*t;
-          float den=density(p);if(den<.002)continue;
+          float den=density(p,weather);if(den<.002)continue;
           first=min(first,t);
-          float shadow=exp(-density(p+uSunDir*1.2)*2.4);
+          float shadow=exp(-density(p+uSunDir*1.2,weather)*2.4);
           float sun=smoothstep(-.06,.06,dot(normalize(p),uSunDir));
           float forward=pow(max(dot(ray,uSunDir),0.0),12.0);
-          vec3 lit=uCloudTint*uSunColour*uSunIntensity*(.035+sun*(.25+shadow*(.65+forward*.25)));
+          vec3 lit=uCloudTint*uSunColour*uSunIntensity*(.035+sun*(.18+shadow*(.55+forward*.18)));
           float a=1.0-exp(-den*stepKm*.85);sum+=trans*a*lit;trans*=1.0-a;
           if(trans<.015)break;
         }

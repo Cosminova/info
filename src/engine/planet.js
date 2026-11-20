@@ -453,21 +453,21 @@ const RELIEF_GLSL = /* glsl */ `
       // once you are low enough to see them. Each layer stops adding octaves
       // at the pixel, which is what keeps it from shimmering at the limb.
       float scale = uRadius * uTerrain;
-      vec3 q = d * 1.7 + vec3(mod(uSurfaceSeed * 0.731, 37.0), mod(uSurfaceSeed * 0.419, 41.0), 3.0);
+      vec3 q = d * uContinentScale + vec3(mod(uSurfaceSeed * 0.731, 37.0), mod(uSurfaceSeed * 0.419, 41.0), 3.0);
       vec4 warp = fbmd(q * 1.25 + 11.3, 3, 2.0, 0.5);
       vec3 qw = q + vec3(warp.x, -warp.x * 0.8, warp.x * 0.6) * 0.6;
-      int lands = int(clamp(log2(0.5 / max(pixelAngle * 1.7, 1e-12)), 2.0, 8.0));
+      int lands = int(clamp(log2(0.5 / max(pixelAngle * uContinentScale, 1e-12)), 2.0, 8.0));
       vec4 land = fbmd(qw, lands, 2.05, 0.5);
       t.x += land.x * scale;
-      t.yzw += land.yzw * 1.7 * scale;
+      t.yzw += land.yzw * uContinentScale * scale;
 
       float high = smoothstep(-0.05, 0.3, land.x);
-      float rangeOct = log2(0.5 / max(pixelAngle * 22.0, 1e-12));
+      float rangeOct = log2(0.5 / max(pixelAngle * uContinentScale * 13.0, 1e-12));
       if (high > 0.001 && rangeOct > 0.5) {
         vec4 ridges = ridgedd(qw * 13.0 + 5.7, int(clamp(rangeOct, 1.0, 8.0)));
         float r = scale * 0.95 * high * smoothstep(0.5, 1.5, rangeOct);
         t.x += (ridges.x - 0.35) * r;
-        t.yzw += ridges.yzw * 13.0 * 1.7 * r;
+        t.yzw += ridges.yzw * 13.0 * uContinentScale * r;
       }
       float hillOct = log2(0.5 / max(pixelAngle * 260.0, 1e-12));
       if (hillOct > 0.5) {
@@ -633,6 +633,7 @@ const SURFACE_UNIFORMS_GLSL = /* glsl */ `
   uniform float uRoughness;
   uniform float uMacroRelief;
   uniform float uTerrain;
+  uniform float uContinentScale;
   uniform float uIrregular;
   uniform float uSurfaceSeed;
   uniform float uSeaLevelKm;      // 0 for a dry world
@@ -903,6 +904,7 @@ const FRAGMENT = /* glsl */ `
   uniform vec3 uHeatColour;
   uniform float uMacroRelief;
   uniform float uTerrain;
+  uniform float uContinentScale;
   uniform float uOceanRelief;
   uniform float uLandRelief;
   uniform float uTerrace;
@@ -1035,7 +1037,7 @@ uniform float uWaveTime;
    * and the eddies inside a belt are sampled from a field squashed across
    * latitude, which stretches them along the flow the way shear does.
    */
-  vec3 zonalAlbedo(vec3 dir) {
+  vec3 zonalAlbedo(vec3 dir, float pixelAngle) {
     float latitude = clamp(dir.y, -1.0, 1.0);
 
     // Boundaries waver. Perfect rings read as a machined object, not weather.
@@ -1057,6 +1059,11 @@ uniform float uWaveTime;
     float storm = fbmd(sheared, 4, 2.17, 0.5).x * 0.5 + 0.5;
     colour = mix(colour, uPaletteC, smoothstep(0.60, 0.94, storm) * 0.6);
 
+    // Smaller eddies ride on the large belts, filtered at the pixel footprint.
+    int eddyOct=int(clamp(log2(.35/max(pixelAngle*uPaletteFreq*14.4,1e-8)),1.0,5.0));
+    float eddies=fbmd(sheared*6.0+29.1,eddyOct,2.09,.5).x;
+    colour*=.94+eddies*.3;
+
     // The poles run out of zonal structure and go flat and a little darker,
     // which is what the polar hoods of both solar-system giants do.
     float hood = smoothstep(0.70, 0.99, abs(latitude));
@@ -1065,8 +1072,9 @@ uniform float uWaveTime;
     return colour;
   }
 
-  vec3 proceduralAlbedo(vec3 dir) {
-    if (uBanding > 0.001) return zonalAlbedo(dir);
+  uniform float uNaturalSurface;
+  vec3 proceduralAlbedo(vec3 dir, float pixelAngle) {
+    if (uBanding > 0.001) return zonalAlbedo(dir, pixelAngle);
 
     vec3 p = dir * uPaletteFreq + uSurfaceSeed;
 
@@ -1088,6 +1096,12 @@ uniform float uWaveTime;
       colour = mix(colour, uPaletteD, smoothstep(uIceLatitude - 0.1, uIceLatitude + 0.06, edge));
     }
 
+    if(uNaturalSurface>.5){
+      int octaves=int(clamp(log2(.35/max(pixelAngle*uPaletteFreq*9.0,1e-8)),1.0,6.0));
+      float strata=fbmd(p*9.0+37.2,octaves,2.09,.55).x;
+      colour*=.85+strata*.5;
+      colour=mix(colour,uPaletteC*.8,smoothstep(.03,.28,strata)*.25);
+    }
     return colour;
   }
 
@@ -1302,7 +1316,9 @@ uniform float uWaveTime;
     // these marks carry its albedo — bright ejecta from fresh impacts, dark
     // crater floors — so the surface keeps contrast at scales the spacecraft
     // never resolved instead of dissolving into a smooth grey wash.
-    vec3 albedo = (uHasColourMap > 0.5 ? sampleColourMap(dir, uv) : proceduralAlbedo(dir))
+    // The test-world biome replaces this colour below; avoid evaluating two
+    // complete planetary materials for every ground pixel.
+    vec3 albedo = (uTestWorld > .5 ? vec3(0.0) : uHasColourMap > 0.5 ? sampleColourMap(dir, uv) : proceduralAlbedo(dir, pixelAngle))
       * uAlbedoBoost;
     if (uOwnTexture > 0.0 && uHasColourMap > 0.5) {
       // Magnified past its texels a photograph is smudges, so close in only
@@ -2257,6 +2273,8 @@ export class Planet {
         // wastes the data and moves the ground away from every position derived
         // from it. On the Moon it lifted the surface above the Apollo landers.
         uTerrain: { value: spec.terrain ?? 0 },
+        uContinentScale: { value: spec.continentScale ?? 1.7 },
+        uNaturalSurface: { value: spec.naturalSurface ? 1 : 0 },
         uOceanRelief: { value: spec.oceanReliefKm ?? 0 },
         uLandRelief: { value: spec.landReliefKm ?? 0 },
         uErosion: { value: spec.erosion ?? 0 },

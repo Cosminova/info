@@ -1,5 +1,6 @@
 import { DataTexture, LinearFilter, Quaternion, RGBAFormat, SRGBColorSpace, Vector3 } from 'three';
 import { describePlanet, hashName, rng as seeded } from './classify.js';
+import { exoAppearance, naturalPalette } from './exo-appearance.js';
 import { inventGeology } from './geology.js';
 import { createRings } from './rings.js';
 import { starLook, starTint, surfaceBrightness } from './stellar.js';
@@ -71,7 +72,8 @@ function airDensity(pressureBar) {
 
 function specFromPlanet(entry, described, hostKey) {
   const gaseous = described.gaseous;
-  const palette = paletteArrays(described);
+  const palette = naturalPalette(paletteArrays(described));
+  const appearance = exoAppearance(entry.name, described);
   // An artistic surface preset, not a claim about this uncharted planet.
   const gliese12b = exoKey(entry.name) === 'exo:gliese-12-b';
   const airless = described.volatiles === 'airless';
@@ -80,7 +82,7 @@ function specFromPlanet(entry, described, hostKey) {
   // volatile class asked for depends on the shape of this world's own height
   // distribution, which is measured off the GPU on first sight: see
   // Planet.calibrateSeaLevel.
-  const oceanFraction = gaseous ? 0 : gliese12b ? 0.45 : described.oceanLevel ?? 0;
+  const oceanFraction = gaseous ? 0 : gliese12b ? 0.45 : appearance.oceanFraction;
   const seaLevelKm = oceanFraction
     ? (0.30 + 0.52 * oceanFraction) * MACRO_RELIEF * described.radiusKm
     : 0;
@@ -100,14 +102,16 @@ function specFromPlanet(entry, described, hostKey) {
     // Continents, ranges and hills, relatively taller on a small world the way
     // Mars stands higher for its size than Earth. The ridged swell under them
     // is turned down: flooded on its own it filled into round pools.
-    terrain: gaseous ? 0 : clamp(0.0024 * Math.sqrt(6371 / described.radiusKm), 0.0012, 0.006),
-    macroRelief: gaseous ? 0 : 0.0012,
+    terrain: gaseous ? 0 : clamp(0.0024 * Math.sqrt(6371 / described.radiusKm), 0.0012, 0.006) * appearance.relief,
+    continentScale: appearance.continentScale,
+    naturalSurface: true,
+    macroRelief: gaseous ? 0 : 0.0012 * appearance.relief,
     // Worn, sharp-crested mountain ranges on top, peaks a few kilometres high
     // with features about ten kilometres across.
     erosion: gaseous ? 0 : clamp(described.radiusKm * 0.0003, 0.8, 3),
-    erosionFreq: gaseous ? 400 : Math.round(described.radiusKm / 10),
+    erosionFreq: gaseous ? 400 : Math.round(described.radiusKm / 10 * appearance.rangeScale),
     rockDensity: gaseous ? 0 : gliese12b ? 0.85 : 0.5,
-    groundRelief: gliese12b ? 1 : 0,
+    groundRelief: gaseous ? 0 : 1,
     testWorld: gliese12b,
     fixedSeaLevel: gliese12b,
     slopeRock: gliese12b ? 0.28 : undefined,
@@ -121,7 +125,7 @@ function specFromPlanet(entry, described, hostKey) {
     // of many islands.
     paletteFreq: gaseous ? 2.2 : described.provinceScale,
     photometry: gaseous ? 0.1 : gliese12b ? 0.25 : 0.75,
-    albedoBoost: gaseous ? 1.15 : 1.25,
+    albedoBoost: 1.05,
     iceLatitude: gliese12b ? 0 : described.icecapLatitude,
     // Warm grey basalt, weathered ochre and pale mineral dust; no violet tint.
     palette: gliese12b ? [
@@ -130,14 +134,14 @@ function specFromPlanet(entry, described, hostKey) {
     ] : palette,
     // Zonal cloud instead of continents. Without it a giant is drawn with the
     // blotchy field meant for rock and reads as a mottled ball.
-    banding: gaseous ? described.bandScale || 1 : 0,
+    banding: gaseous ? (described.bandScale || 1) * appearance.bandScale : 0,
     heatGlow: described.heatGlow,
     heatColour: described.heatColour,
     polarSmooth: gaseous ? 1 : 0,
     seaLevelKm: gliese12b ? 1.1 : seaLevelKm,
     oceanFraction,
     seaDeep: gliese12b ? [0.012,0.065,0.11] : stops?.sea,
-    seaShallow: gliese12b ? [0.035,0.26,0.25] : stops?.shelf,
+    seaShallow: gliese12b ? [0.035,0.15,0.17] : stops?.shelf,
     // Sun glint is what tells you at a glance that the blue is liquid.
     specular: seaLevelKm > 0 ? 0.9 : 0,
     // Gas giants carry their weather in their own palette already; this is the
@@ -145,11 +149,11 @@ function specFromPlanet(entry, described, hostKey) {
     cloudCover: gaseous ? 0 : gliese12b ? 0.52 : described.cloudCover,
     // Storm cells, not continents: a handful of cycles over the whole sphere
     // gives half a dozen blobs and reads as marbling rather than weather.
-    cloudFreq: 2.6 + described.provinceScale * 0.6 + (described.radiusEarth > 2 ? 1.2 : 0),
+    cloudFreq: appearance.cloudScale,
     maxPatches: gaseous ? 1200 : 1800,
     maxLevel: gaseous ? 13 : 19,
     pixelsPerQuad: 6,
-    atmosphere: gliese12b ? { height: 0.018, density: 0.85, tint: [0.35,0.55,1], skyBrightness: 2.0 } : gaseous
+    atmosphere: gliese12b ? { height: 0.018, density: 1.0, tint: [0.35,0.55,1], skyBrightness: 2.0 } : gaseous
       ? { height: 0.08, density: 2.2, tint: palette[0] }
       : airless
         ? null
