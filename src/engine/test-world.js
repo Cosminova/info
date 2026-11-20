@@ -18,6 +18,20 @@ export const TEST_WORLD_GLSL = /* glsl */ `
   uniform float uTestWorld;
   const vec3 testSites[7] = vec3[7](${centers});
   float testRegion(vec3 d, int i) { return smoothstep(0.997, 0.9995, dot(d, testSites[i])); }
+  // The existing derivative-noise basis, with rounded crests and less energy
+  // in fine octaves. This avoids the cost of the general erosion shader while
+  // retaining a matching height gradient for materials and terrain lighting.
+  vec4 testMountainRidges(vec3 p) {
+    vec4 sum=vec4(0.0);float amp=0.5,freq=1.0;
+    for(int i=0;i<5;i++) {
+      vec4 n=noised(p*freq);
+      float rounded=sqrt(n.x*n.x+0.025),crest=1.0-rounded;
+      sum.x+=amp*crest*crest;
+      sum.yzw-=amp*freq*2.0*crest*n.x/rounded*n.yzw;
+      freq*=2.03;amp*=0.44;
+    }
+    sum.x-=0.42;return sum;
+  }
   vec4 testTerrain(vec3 d, float pixelAngle) {
     // Interior sites need only their own field. Avoid evaluating continent,
     // crags and distant ridges for every vertex and fragment in a meadow.
@@ -29,11 +43,14 @@ export const TEST_WORLD_GLSL = /* glsl */ `
     vec4 continent = fbmd(d * 2.8 + 17.3, 5, 2.03, 0.47);
     vec4 ridge = ridgedd(d * 38.0 + 3.7, 6);
     float mountain = smoothstep(0.02, 0.32, continent.x);
+    float mq = clamp((continent.x - 0.02) / 0.30, 0.0, 1.0);
+    float mountainDerivative = 6.0 * mq * (1.0 - mq) / 0.30;
     t = vec4(1.4 + continent.x * 9.0 + (ridge.x - 0.3) * mountain * 3.0 + hill.x * 0.22,
-      continent.yzw * 25.2 + ridge.yzw * 114.0 * mountain + hill.yzw * 41.8);
+      continent.yzw * (25.2 + (ridge.x - 0.3) * 8.4 * mountainDerivative) + ridge.yzw * 114.0 * mountain + hill.yzw * 41.8);
     // Bounded crag amplitude; fine grain belongs in the material, not spiky mesh noise.
-    int oct = int(clamp(log2(0.5 / max(pixelAngle * 1600.0, 1e-10)), 1.0, 5.0));
-    vec4 crag = fbmd(d * 1600.0 + 41.0, oct, 2.03, 0.32);
+    // Metre-scale materials are filtered separately. Keep the geological
+    // height field fixed so approaching a site cannot move its rock foundations.
+    vec4 crag = fbmd(d * 1600.0 + 41.0, 3, 2.03, 0.32);
     t += vec4(crag.x * 0.025, crag.yzw * 40.0);
     }
     for (int i = 0; i < 7; i++) {
@@ -50,7 +67,19 @@ export const TEST_WORLD_GLSL = /* glsl */ `
         h=1.9+hill.x*.15+.028*(sin(phase)+.22*sin(phase*2.0));
         slope=hill.yzw*28.5+.028*(cos(phase)+.44*cos(phase*2.0))*(wind*20000.0+warp.yzw*2000.0);
       }
-      if (i == 3) { int oct = int(clamp(log2(0.5 / max(pixelAngle * 1600.0, 1e-10)), 1.0, 5.0)); vec4 crag = fbmd(d * 1600.0 + 41.0, oct, 2.03, 0.32); vec4 alpine = ridgedd(d * 740.0 + 3.7, 6); h = 3.0 + alpine.x * 2.2 + crag.x * 0.06; slope = alpine.yzw * 1628.0 + crag.yzw * 96.0; }
+      if (i == 3) {
+        // Broad connected massifs and quieter flanks. The existing hill field
+        // bends the range and creates wide valleys between the highlands.
+        vec3 warpAxis = vec3(0.8, -0.35, 0.55);
+        vec4 alpine = testMountainRidges(d * 480.0 + warpAxis * hill.x + 3.7);
+        vec3 gradient = alpine.yzw * 480.0 + hill.yzw * (190.0 * dot(alpine.yzw, warpAxis));
+        float valley = smoothstep(-0.15, 0.10, hill.x);
+        float vq = clamp((hill.x + 0.15) / 0.25, 0.0, 1.0);
+        float valleyDerivative = 6.0 * vq * (1.0 - vq) / 0.25;
+        vec4 crag = fbmd(d * 1600.0 + 41.0, 3, 2.03, 0.32);
+        h = 3.2 + alpine.x * 4.0 + valley * 0.8 + hill.x * 0.1 + crag.x * 0.02;
+        slope = gradient * 4.0 + hill.yzw * (190.0 * (0.8 * valleyDerivative + 0.1)) + crag.yzw * 32.0;
+      }
       if (i == 4) { vec4 ridge = ridgedd(d * 38.0 + 3.7, 6); h = 2.8 + ridge.x * 0.45; slope = ridge.yzw * 17.1; }
       if (i == 5) {
         float r = max(length(d - testSites[i]) * uRadius, 0.001);
@@ -70,14 +99,17 @@ export const TEST_WORLD_GLSL = /* glsl */ `
     float moisture = fbmd(d * 7.0 + 19.0, 3, 2.1, 0.5).x;
     float cold = smoothstep(0.55, 0.9, abs(d.y));
     vec3 green = mix(vec3(0.085,0.14,0.038), vec3(0.19,0.26,0.07), smoothstep(-0.2,0.25,moisture));
-    vec3 sand = vec3(0.48,0.31,0.15), stone = vec3(0.29,0.27,0.23);
+    vec3 sand = vec3(0.48,0.31,0.15), stone = vec3(0.24,0.26,0.28);
     vec3 c = mix(sand, green, smoothstep(-0.12,0.12,moisture));
     c = mix(c, vec3(0.27,0.25,0.15), cold);
     c = mix(c, vec3(0.67,0.72,0.73), smoothstep(0.82,0.96,abs(d.y)));
     c = mix(c, vec3(0.61,0.48,0.29), 1.0-smoothstep(0.015,0.085,abs(height-1.1)));
     c = mix(c, green, testRegion(d,1));
     c = mix(c, sand, testRegion(d,2));
-    c = mix(c, vec3(0.42,0.39,0.34), testRegion(d,3));
+    float beds = 0.5 + 0.5 * sin(height * 42.0 + moisture * 4.0);
+    vec3 alpineRock = mix(vec3(0.27,0.29,0.31),vec3(0.49,0.50,0.47),
+      beds * 0.22 + smoothstep(0.04,0.25,moisture) * 0.18);
+    c = mix(c, alpineRock, testRegion(d,3));
     c = mix(c, vec3(0.71,0.77,0.79), testRegion(d,4));
     c = mix(c, vec3(0.075,0.067,0.058), testRegion(d,5));
     c = mix(c, vec3(0.12,0.20,0.065), testRegion(d,6));

@@ -1281,7 +1281,7 @@ uniform float uWaveTime;
     }
 
     if (uTestWorld > 0.5) {
-      float softer = max(testRegion(dir,2)*0.78, max(testRegion(dir,4)*0.65,testRegion(dir,1)*0.35));
+      float softer = max(testRegion(dir,3)*0.25,max(testRegion(dir,2)*0.78, max(testRegion(dir,4)*0.65,testRegion(dir,1)*0.35)));
       detailShade = mix(detailShade,1.0,softer);
       normal = normalize(mix(normal,terrainNormal,softer));
     }
@@ -2064,6 +2064,7 @@ const PROBE_VERTEX = /* glsl */ `
   precision highp float;
 
   attribute float aSlot;
+  uniform float uProbePixelAngle;
 
   varying float vGround;
 
@@ -2075,7 +2076,7 @@ const PROBE_VERTEX = /* glsl */ `
 
   void main() {
     vec3 d = normalize(position);
-    vGround = surfaceHeightKm(d, pixelAngleAt(d));
+    vGround = surfaceHeightKm(d, uProbePixelAngle > 0.0 ? uProbePixelAngle : pixelAngleAt(d));
     // Slot i lands dead centre of pixel i of the strip.
     gl_Position = vec4((aSlot + 0.5) / float(${PROBE_SLOTS}) * 2.0 - 1.0, 0.0, 0.0, 1.0);
     gl_PointSize = 1.0;
@@ -2704,7 +2705,7 @@ export class Planet {
     this._probeMaterial ??= new ShaderMaterial({
       // The same uniform objects, not copies: the probe has to answer for the
       // surface as it is being drawn this frame, not as it was when it was set up.
-      uniforms: this.material.uniforms,
+      uniforms: { ...this.material.uniforms, uProbePixelAngle: { value: 0 } },
       vertexShader: PROBE_VERTEX,
       fragmentShader: PROBE_FRAGMENT,
       depthTest: false,
@@ -2720,14 +2721,23 @@ export class Planet {
    *
    * @returns {Promise<Float32Array> | null} null while a read is still pending
    */
-  groundHeightsKmAsync(renderer, dirs) {
-    if (this._asyncProbe || !renderer.readRenderTargetPixelsAsync) return null;
-    const probe = this._probeTargetAsync ??= {
+  groundHeightsKmAsync(renderer, dirs, { owner = this, pixelAngle = 0 } = {}) {
+    if (owner._asyncProbe || !renderer.readRenderTargetPixelsAsync) return null;
+    const probe = owner._probeTargetAsync ??= {
       target: groundProbe().target.clone(),
       pixels: new Float32Array(PROBE_SLOTS * 4),
     };
     const shared = groundProbe();
+    // Scatter owns a separate, bounded readback channel so loading never waits
+    // behind collision queries, or delays the next safe walking step.
     this._ensureProbeMaterial();
+    if (owner !== this && !owner._probeMaterial) {
+      owner._probeMaterial = new ShaderMaterial({
+        uniforms: { ...this.material.uniforms, uProbePixelAngle: { value: pixelAngle } },
+        vertexShader: PROBE_VERTEX, fragmentShader: PROBE_FRAGMENT,
+        depthTest: false, depthWrite: false,
+      });
+    }
     const count = Math.min(PROBE_SLOTS, dirs.length);
     for (let i = 0; i < count; i++) {
       shared.dirs[i * 3] = dirs[i].x;
@@ -2736,7 +2746,7 @@ export class Planet {
     }
     shared.geometry.getAttribute('position').needsUpdate = true;
     shared.geometry.setDrawRange(0, count);
-    shared.points.material = this._probeMaterial;
+    shared.points.material = owner._probeMaterial;
     const previous = renderer.getRenderTarget();
     renderer.setRenderTarget(probe.target);
     renderer.render(shared.scene, shared.camera);
@@ -2747,13 +2757,13 @@ export class Planet {
     // The async reader rebinds its own buffer before getBufferSubData.
     const gl = renderer.getContext();
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
-    this._asyncProbe = read.then(() => {
+    owner._asyncProbe = read.then(() => {
         const out = new Float32Array(count);
         for (let i = 0; i < count; i++) out[i] = probe.pixels[i * 4];
         return out;
       })
-      .finally(() => { this._asyncProbe = null; });
-    return this._asyncProbe;
+      .finally(() => { owner._asyncProbe = null; });
+    return owner._asyncProbe;
   }
 
   /** Spacing of the finest vertices drawn, in radians of the sphere. */
