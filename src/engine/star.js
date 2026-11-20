@@ -137,8 +137,11 @@ const CORONA_VERTEX = /* glsl */ `
     vUv = position.xy;
     // View-space billboard so the corona always faces us.
     vec4 centre = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
-    centre.z += uLensOffset;
-    centre.xy += position.xy * uScale;
+    // Move along the eye-to-source ray, preserving the projected centre and
+    // angular size. A Z-only shift displaces off-axis glare from its star.
+    float lensScale = max(0.01, 1.0 - uLensOffset / max(-centre.z, 1e-6));
+    centre.xyz *= lensScale;
+    centre.xy += position.xy * uScale * lensScale;
     gl_Position = projectionMatrix * centre;
 
     // The scene runs on a logarithmic depth buffer, and the corona has to write
@@ -278,10 +281,10 @@ const FLARE_FRAGMENT = /* glsl */ `
     float core = exp(-pow(d / 0.055, 2.0)) * 4.0 * (1.0-uResolved);
 
     // The halo is kept off a resolved disc so a close star keeps its surface;
-    // the streak and rays are the lens, not the star, and stay however close.
+    // point-source rays fade away as the stellar surface becomes resolved.
     float off = mix(1.0, smoothstep(uDiscFraction * 0.85, uDiscFraction * 1.15, d), uResolved);
     vec3 tint = mix(uColour, vec3(1.0), 0.35 * exp(-d * 6.0));
-    float lens = (rays * 0.38 + streak * 1.05) * mix(0.45, 1.0, uSpikes);
+    float lens = (rays * 0.38 + streak * 1.05) * uSpikes * off;
     gl_FragColor = vec4(uIntensity * (tint * (halo * off + lens) + vec3(core) + ghost * off * mix(1.0,.3,uResolved)), 1.0);
   }
 `;
@@ -486,7 +489,7 @@ export class Star {
       f.uDiscFraction.value = clamp(this.radius / flareScale, 0, 0.9);
       f.uSpikes.value = 1 - clamp((discRadiusPx - 4) / 30, 0, 1);
       f.uResolved.value = clamp((discRadiusPx - 14) / 30, 0, 1);
-      f.uIntensity.value = 0.85 * Math.pow(light, 0.6) * visibility * lensTransmission;
+      f.uIntensity.value = Math.min(1.4, 0.85 * Math.pow(light, 0.6)) * (1 - 0.8 * f.uResolved.value) * visibility * lensTransmission;
     }
   }
 }

@@ -1,3 +1,4 @@
+import { createVolumeClouds } from './volume-clouds.js';
 import { biomeMaterialUniforms, BIOME_MATERIAL_GLSL } from './biome-materials.js';
 import { SurfaceScatter } from './surface-scatter.js';
 import { SkyRadianceCache, SKY_WEATHER_GLSL } from './sky-radiance-cache.js';
@@ -917,6 +918,7 @@ const FRAGMENT = /* glsl */ `
   uniform float uSeaLevelKm;
   uniform vec3 uSeaDeep;
   uniform vec3 uSeaShallow;
+  uniform float uVolumeClouds;
   uniform float uCloudCover;
 uniform float uOvercast;
 uniform float uOvercastSeen;
@@ -1519,7 +1521,7 @@ uniform float uWaveTime;
     // none of that: the cloud field is sampled along the view direction at the
     // deck's altitude, so it slides against the ground as you move, which is the
     // part the eye actually reads.
-    if (uCloudCover > 0.001 && (uTestWorld < 0.5 || length(uCameraLocal) - uRadius > 14.0)) {
+    if (uVolumeClouds < 0.5 && uCloudCover > 0.001 && (uTestWorld < 0.5 || length(uCameraLocal) - uRadius > 14.0)) {
       vec3 look = normalize(dir * (1.0 + uCloudHeight) - view * uCloudHeight * 1.4);
       // Sampled faster in latitude than in longitude, so systems come out drawn
       // out east-west the way rotation actually shears weather, instead of as
@@ -2294,6 +2296,7 @@ export class Planet {
         uSeaLevelKm: { value: spec.seaLevelKm ?? 0 },
         uSeaDeep: { value: new Color(...(spec.seaDeep ?? [0.012, 0.045, 0.11])) },
         uSeaShallow: { value: new Color(...(spec.seaShallow ?? [0.06, 0.22, 0.30])) },
+        uVolumeClouds: { value: spec.cloudCover > 0 && !spec.overcast && !spec.banding ? 1 : 0 },
         uCloudCover: { value: spec.cloudCover ?? 0 },
         uOvercast: { value: spec.atmosphere?.overcast ?? 0 },
         uOvercastSeen: { value: 1 },
@@ -2404,6 +2407,11 @@ export class Planet {
     }
     this.mesh.name = `${spec.key}-surface`;
     this.spin.add(this.mesh);
+    if (this.material.uniforms.uVolumeClouds.value) {
+      const baseKm = spec.testWorld ? 14 : Math.max(2, Math.min(10, this.radius * (spec.cloudHeight ?? .0022)));
+      this.cloudVolume = createVolumeClouds(this.material, this.radius, baseKm, spec.testWorld ? 5 : 4);
+      this.spin.add(this.cloudVolume);
+    }
 
     if (spec.atmosphere) {
       const shellRadius = this.radius * (1 + spec.atmosphere.height);

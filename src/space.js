@@ -3751,22 +3751,8 @@ function frame(now) {
   // the daylight and they fall below it. Faded by the air the camera is in.
   const daylight = surfaceOf(resolved?.key)?.planet.daylight || 0;
   let starsLeft = clamp(1 - 1.12 * daylight, 0, 1);
-  // A camera exposed for a large sunlit planet cannot also expose faint stars.
-  // Keep the astronomical sky when the body is small, dark or off-centre.
-  const photoSurface = surfaceOf(resolved?.key)?.planet;
-  if (photoSurface) {
-    const pu = photoSurface.material.uniforms;
-    const eye = pu.uCameraLocal.value;
-    const sunElevation = eye.dot(pu.uSunDir.value) / Math.max(eye.length(), 1e-9);
-    const phase = eye.length() < photoSurface.radius * 1.015
-      ? clamp((sunElevation + 0.03) / 0.15, 0, 1)
-      : clamp(0.5 + 0.5 * sunElevation, 0, 1);
-    const radiusOnScreen = photoSurface.radius / Math.max(eye.length(), photoSurface.radius) * pixelsPerRadian / Math.max(height, 1);
-    const framing = clamp((radiusOnScreen - 0.06) / 0.16, 0, 1);
-    const litExposure = clamp((phase - 0.015) / 0.15, 0, 1) * clamp(pu.uSunIntensity.value, 0, 1);
-    const lookingAtBody = Math.max(0, Math.cos(controls.lookYaw) * Math.cos(controls.lookPitch));
-    starsLeft *= 1 - framing * framing * (3 - 2 * framing) * litExposure * lookingAtBody;
-  }
+  // Planet framing must not erase the astronomical background. Atmospheric
+  // daylight still dims stars when the observer is actually under a lit sky.
   // Under a closed deck the sun's disc is gone too; its light still arrives,
   // diffused, through the sky shader.
   const groundPlanet = surfaceOf(resolved?.key)?.planet ?? null;

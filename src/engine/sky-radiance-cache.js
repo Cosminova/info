@@ -78,17 +78,7 @@ export const SKY_WEATHER_GLSL = /* glsl */ `
     if(uSkyWeather<0.5 || uOnGround>0.5) return colour;
     float sunUp=dot(normalize(origin),uSunDir);
     float day=smoothstep(-0.12,0.12,sunUp);
-    vec2 hit=sphereSpan(origin,ray,uRadius+14.0);
-    if(hit.y>0.0 && dot(ray,normalize(origin))>0.005 && length(origin)<uRadius+14.0) {
-      vec3 p=normalize(origin+ray*hit.y);
-      vec2 q=vec2(atan(p.z,p.x),asin(p.y))*700.0 + vec2(uWeatherTime*0.0013,uWeatherTime*0.0006);
-      float f=skyFbm(q), detail=skyNoise(q*7.0);
-      float cloud=smoothstep(0.45,0.69,f+detail*0.065);
-      float silver=pow(max(dot(ray,uSunDir),0.0),18.0);
-      vec3 c=mix(vec3(0.18,0.22,0.27),vec3(0.88,0.9,0.9),smoothstep(0.44,0.76,f));
-      c*=uSunColour*min(uSunIntensity,2.4)*(day*(0.4+silver*0.5)+0.012);
-      colour=mix(colour,c,cloud*0.91);
-    }
+    // Clouds are integrated by the shared spherical volume, including from below.
     float night=1.0-smoothstep(-0.16,-0.03,sunUp);
     if(night>0.001) {
       vec2 shell=sphereSpan(origin,ray,uRadius+95.0);

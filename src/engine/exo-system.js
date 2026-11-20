@@ -413,6 +413,8 @@ export class ExoSystem {
     for (const item of this.planets) {
       item.planet.skyRadianceCache?.dispose();
       item.planet.surfaceScatter?.dispose();
+      item.planet.cloudVolume?.geometry.dispose();
+      item.planet.cloudVolume?.material.dispose();
       item.planet.group.removeFromParent();
       for (const moon of item.moons) moon.planet.group.removeFromParent();
       if (item.rings) {

@@ -41,12 +41,12 @@ export const TEST_WORLD_GLSL = /* glsl */ `
     for(int j=0;j<7;j++) if(dot(d,testSites[j])>=0.9995) interior=true;
     if(!interior) {
     vec4 continent = fbmd(d * 2.8 + 17.3, 5, 2.03, 0.47);
-    vec4 ridge = ridgedd(d * 38.0 + 3.7, 6);
+    vec4 ridge = testMountainRidges(d * 1100.0 + 3.7);
     float mountain = smoothstep(0.02, 0.32, continent.x);
     float mq = clamp((continent.x - 0.02) / 0.30, 0.0, 1.0);
     float mountainDerivative = 6.0 * mq * (1.0 - mq) / 0.30;
-    t = vec4(1.4 + continent.x * 9.0 + (ridge.x - 0.3) * mountain * 3.0 + hill.x * 0.22,
-      continent.yzw * (25.2 + (ridge.x - 0.3) * 8.4 * mountainDerivative) + ridge.yzw * 114.0 * mountain + hill.yzw * 41.8);
+    t = vec4(1.4 + continent.x * 9.0 + (ridge.x + 0.48) * mountain * 3.8 + hill.x * 0.22,
+      continent.yzw * (25.2 + (ridge.x + 0.48) * 10.64 * mountainDerivative) + ridge.yzw * 4180.0 * mountain + hill.yzw * 41.8);
     // Bounded crag amplitude; fine grain belongs in the material, not spiky mesh noise.
     // Metre-scale materials are filtered separately. Keep the geological
     // height field fixed so approaching a site cannot move its rock foundations.
