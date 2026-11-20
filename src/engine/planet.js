@@ -310,6 +310,7 @@ const RELIEF_GLSL = /* glsl */ `
   uniform float uVolcanoHeight;    // km
   uniform float uVolcanoDensity;
   uniform float uDebugGeology;
+  uniform vec3 uExoMountains;
   uniform float uErosion;          // km
   uniform float uErosionFreq;      // per radius
   uniform float uErosionOctaves;   // finest kept, from the precision of a direction
@@ -493,6 +494,15 @@ const RELIEF_GLSL = /* glsl */ `
         t.x += (crag.x - 0.5) * c;
         t.yzw += crag.yzw * 3000.0 * c;
       }
+    }
+    if(uExoMountains.x>0.0){
+      // Real displacement, shared by terrain vertices, normals and collision
+      // probes. The same range field used on Gliese now reaches other worlds.
+      float frequency=uExoMountains.y;
+      vec3 seed=vec3(mod(uSurfaceSeed*.73,47.0),mod(uSurfaceSeed*.39,53.0),19.2);
+      vec4 range=testLandform(d*frequency+seed,pixelAngle*frequency);
+      t+=vec4(range.x*range.x*uExoMountains.x,
+        range.yzw*(2.0*range.x*uExoMountains.x*frequency));
     }
     if (uOceanRelief > 0.001 && uHasOcean > 0.5) {
       // Land and sea from the measured ocean mask: the seabed falls away from
@@ -1037,6 +1047,7 @@ uniform float uWaveTime;
    * and the eddies inside a belt are sampled from a field squashed across
    * latitude, which stretches them along the flow the way shear does.
    */
+  uniform vec4 uExoWeather;
   vec3 zonalAlbedo(vec3 dir, float pixelAngle) {
     float latitude = clamp(dir.y, -1.0, 1.0);
 
@@ -1051,6 +1062,7 @@ uniform float uWaveTime;
     float fine = fbmd(vec3(0.0, zone * 12.0 * uBanding, 0.0) + uSurfaceSeed * 1.7, 2, 2.0, 0.5).x;
     float belt = clamp(0.5 + 0.60 * wide + 0.24 * fine, 0.0, 1.0);
 
+    if(uExoWeather.x>0.0)belt=clamp(.5+(belt-.5)*uExoWeather.y,0.0,1.0);
     vec3 colour = mix(uPaletteA, uPaletteB, smoothstep(0.30, 0.70, belt));
 
     // Eddies, stretched along the flow: squashing the sample across latitude
@@ -1063,6 +1075,32 @@ uniform float uWaveTime;
     int eddyOct=int(clamp(log2(.35/max(pixelAngle*uPaletteFreq*14.4,1e-8)),1.0,5.0));
     float eddies=fbmd(sheared*6.0+29.1,eddyOct,2.09,.5).x;
     colour*=.94+eddies*.3;
+
+    if(uExoWeather.x>1.5){
+      // Local spherical vortices: a dark eye and warped spiral cloud filaments,
+      // not another set of latitude stripes. Locations persist with the seed.
+      int count=uExoWeather.x>3.5?3:uExoWeather.x>2.5?1:2;
+      for(int i=0;i<3;i++){
+        if(i>=count)break;
+        float lon=uExoWeather.w+float(i)*2.39996;
+        float lat=-.35+float(i)*.42+.12*sin(uSurfaceSeed);
+        vec3 centre=vec3(cos(lat)*cos(lon),sin(lat),cos(lat)*sin(lon));
+        vec3 east=vec3(-sin(lon),0.0,cos(lon)),north=cross(centre,east);
+        vec3 delta=dir-centre;float facing=dot(dir,centre);
+        vec2 uv=vec2(dot(delta,east),dot(delta,north))/uExoWeather.z;
+        float r=length(uv),mask=exp(-r*r*2.0)*smoothstep(.5,.9,facing);
+        if(mask>.002){
+          float angle=atan(uv.y,uv.x)+1.6*exp(-r*r);
+          vec3 spiral=vec3(cos(angle)*r,sin(angle)*r,float(i)*7.1+uSurfaceSeed);
+          int vortexOct=int(clamp(log2(.35*uExoWeather.z/max(pixelAngle*24.0,1e-8)),1.0,3.0));
+          float threads=fbmd(spiral*3.5,vortexOct,2.07,.5).x;
+          vec3 stormColour=mix(uPaletteB*.55,uPaletteC,smoothstep(-.25,.25,threads));
+          stormColour*=.55+.45*smoothstep(.04,.28,r);
+          colour=mix(colour,stormColour,mask*.95);
+        }
+      }
+      if(uExoWeather.x>3.5)colour=mix(colour,mix(uPaletteB,uPaletteC,smoothstep(.25,.7,storm)),.5);
+    }
 
     // The poles run out of zonal structure and go flat and a little darker,
     // which is what the polar hoods of both solar-system giants do.
@@ -2275,6 +2313,8 @@ export class Planet {
         uTerrain: { value: spec.terrain ?? 0 },
         uContinentScale: { value: spec.continentScale ?? 1.7 },
         uNaturalSurface: { value: spec.naturalSurface ? 1 : 0 },
+        uExoMountains: { value: new Vector3(...(spec.exoMountains ?? [0,1,0])) },
+        uExoWeather: { value: new Vector4(...(spec.exoWeather ?? [0,0,0,0])) },
         uOceanRelief: { value: spec.oceanReliefKm ?? 0 },
         uLandRelief: { value: spec.landReliefKm ?? 0 },
         uErosion: { value: spec.erosion ?? 0 },

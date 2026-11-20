@@ -74,6 +74,13 @@ export class WalkSupport {
     if (h !== null && performance.now() - this.tile.at < 350) return h;
     if (!this.pending) {
       const tile = this.describe(dir);
+      // A landing can begin while the sphere still has orbital patches. Their
+      // triangle planes cut through entire mountain ranges. Bootstrap from the
+      // actual height field until local geometry has refined; never lower the
+      // walker onto that temporary coarse chord (or a culled patch).
+      if (bootstrap && !this.tile && (!tile || tile.r.length() * this.planet.radius / tile.n > 0.1)) {
+        return this.planet.groundHeightsKm(this.renderer, [dir])[0] + 0.0006;
+      }
       if (tile) {
         const generation = this.generation;
         if ((bootstrap && !this.tile) || !this.renderer.readRenderTargetPixelsAsync) {

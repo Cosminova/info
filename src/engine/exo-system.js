@@ -1,6 +1,6 @@
 import { DataTexture, LinearFilter, Quaternion, RGBAFormat, SRGBColorSpace, Vector3 } from 'three';
 import { describePlanet, hashName, rng as seeded } from './classify.js';
-import { exoAppearance, naturalPalette } from './exo-appearance.js';
+import { exoAppearance, exoCharacter, naturalPalette } from './exo-appearance.js';
 import { inventGeology } from './geology.js';
 import { createRings } from './rings.js';
 import { starLook, starTint, surfaceBrightness } from './stellar.js';
@@ -70,9 +70,10 @@ function airDensity(pressureBar) {
   return clamp(1.3 + Math.log10(pressureBar) * 0.75, 0.35, 3.2);
 }
 
-function specFromPlanet(entry, described, hostKey) {
+export function specFromPlanet(entry, described, hostKey) {
   const gaseous = described.gaseous;
-  const palette = naturalPalette(paletteArrays(described));
+  const character = exoCharacter(entry.name, described);
+  const palette = naturalPalette(character.palette);
   const appearance = exoAppearance(entry.name, described);
   // An artistic surface preset, not a claim about this uncharted planet.
   const gliese12b = exoKey(entry.name) === 'exo:gliese-12-b';
@@ -82,7 +83,7 @@ function specFromPlanet(entry, described, hostKey) {
   // volatile class asked for depends on the shape of this world's own height
   // distribution, which is measured off the GPU on first sight: see
   // Planet.calibrateSeaLevel.
-  const oceanFraction = gaseous ? 0 : gliese12b ? 0.45 : appearance.oceanFraction;
+  const oceanFraction = gaseous ? 0 : gliese12b ? 0.45 : character.oceanFraction ?? 0;
   const seaLevelKm = oceanFraction
     ? (0.30 + 0.52 * oceanFraction) * MACRO_RELIEF * described.radiusKm
     : 0;
@@ -97,7 +98,7 @@ function specFromPlanet(entry, described, hostKey) {
     craterFreq: gaseous ? 80 : Math.round(260 * described.craterScale),
     craterOctaves: gaseous ? 0 : described.craterOctaves,
     craterDepth: described.craterDepth,
-    craterDensity: described.craterDensity,
+    craterDensity: described.craterDensity * (character.craterFactor ?? 1),
     roughness: described.roughness,
     // Continents, ranges and hills, relatively taller on a small world the way
     // Mars stands higher for its size than Earth. The ridged swell under them
@@ -105,10 +106,13 @@ function specFromPlanet(entry, described, hostKey) {
     terrain: gaseous ? 0 : clamp(0.0024 * Math.sqrt(6371 / described.radiusKm), 0.0012, 0.006) * appearance.relief,
     continentScale: appearance.continentScale,
     naturalSurface: true,
+    landscapeKind: character.kind,
+    exoMountains: gliese12b ? [0,1,0] : character.mountains,
+    exoWeather: character.weather,
     macroRelief: gaseous ? 0 : 0.0012 * appearance.relief,
     // Worn, sharp-crested mountain ranges on top, peaks a few kilometres high
     // with features about ten kilometres across.
-    erosion: gaseous ? 0 : clamp(described.radiusKm * 0.0003, 0.8, 3),
+    erosion: gaseous ? 0 : .2 * clamp(described.radiusKm * 0.0003, 0.8, 3),
     erosionFreq: gaseous ? 400 : Math.round(described.radiusKm / 10 * appearance.rangeScale),
     rockDensity: gaseous ? 0 : gliese12b ? 0.85 : 0.5,
     groundRelief: gaseous ? 0 : 1,
@@ -126,7 +130,7 @@ function specFromPlanet(entry, described, hostKey) {
     paletteFreq: gaseous ? 2.2 : described.provinceScale,
     photometry: gaseous ? 0.1 : gliese12b ? 0.25 : 0.75,
     albedoBoost: 1.05,
-    iceLatitude: gliese12b ? 0 : described.icecapLatitude,
+    iceLatitude: gaseous || gliese12b ? 0 : character.kind==='glacial' ? .45 : described.temperatureK<255 ? Math.max(.75,described.icecapLatitude) : 0,
     // Warm grey basalt, weathered ochre and pale mineral dust; no violet tint.
     palette: gliese12b ? [
       [0.36, 0.31, 0.25], [0.20, 0.18, 0.155],
@@ -134,19 +138,19 @@ function specFromPlanet(entry, described, hostKey) {
     ] : palette,
     // Zonal cloud instead of continents. Without it a giant is drawn with the
     // blotchy field meant for rock and reads as a mottled ball.
-    banding: gaseous ? (described.bandScale || 1) * appearance.bandScale : 0,
+    banding: gaseous ? character.banding : 0,
     heatGlow: described.heatGlow,
     heatColour: described.heatColour,
     polarSmooth: gaseous ? 1 : 0,
     seaLevelKm: gliese12b ? 1.1 : seaLevelKm,
     oceanFraction,
-    seaDeep: gliese12b ? [0.012,0.065,0.11] : stops?.sea,
-    seaShallow: gliese12b ? [0.035,0.15,0.17] : stops?.shelf,
+    seaDeep: gliese12b ? [0.012,0.065,0.11] : described.temperatureK<200 ? [0.065,.05,.025] : [.008,.035,.065],
+    seaShallow: gliese12b ? [0.035,0.15,0.17] : described.temperatureK<200 ? [.18,.13,.07] : [.035,.13,.16],
     // Sun glint is what tells you at a glance that the blue is liquid.
     specular: seaLevelKm > 0 ? 0.9 : 0,
     // Gas giants carry their weather in their own palette already; this is the
     // deck over a solid surface.
-    cloudCover: gaseous ? 0 : gliese12b ? 0.52 : described.cloudCover,
+    cloudCover: gaseous ? 0 : gliese12b ? 0.52 : character.cloudCover,
     // Storm cells, not continents: a handful of cycles over the whole sphere
     // gives half a dozen blobs and reads as marbling rather than weather.
     cloudFreq: appearance.cloudScale,
@@ -154,7 +158,7 @@ function specFromPlanet(entry, described, hostKey) {
     maxLevel: gaseous ? 13 : 19,
     pixelsPerQuad: 6,
     atmosphere: gliese12b ? { height: 0.018, density: 1.0, tint: [0.35,0.55,1], skyBrightness: 2.0 } : gaseous
-      ? { height: 0.08, density: 2.2, tint: palette[0] }
+      ? { height: 0.012, density: .65, tint: palette[0] }
       : airless
         ? null
         // Thicker and bluer than it was. From low altitude the band of air over
@@ -170,7 +174,7 @@ function specFromPlanet(entry, described, hostKey) {
     cloudTint: described.hazeTint && (described.air?.pressureBar ?? 1) > 6
       ? described.hazeTint.map((c) => 0.55 + 0.45 * c)
       : undefined,
-    geology: gaseous ? null : inventGeology({ radiusKm: described.radiusKm, bulk: described.bulk === 'aquaria' ? 'ice' : 'rock' }, random),
+    geology: gaseous ? null : { ...inventGeology({ radiusKm: described.radiusKm, bulk: described.bulk === 'aquaria' ? 'ice' : 'rock' }, random), ...character.geology },
     details: detailsOf(described),
     classLabel: gliese12b ? "Artistic biome test world" : described.label,
     aAu: entry.aAu,
