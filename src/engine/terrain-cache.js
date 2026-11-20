@@ -328,6 +328,9 @@ export class TerrainCache {
 
   /** Which bodies the bake can stand in for: dry, cratered or worn, and nothing it does not store. */
   static suits(spec, uniforms) {
+    // This preset has no DEM or crater marks. Cache its unflooded height and
+    // slope; the surface shader still computes animated water after lookup.
+    if (spec.testWorld) return true;
     return ((spec.craterOctaves ?? 0) > 0 || (spec.erosion ?? 0) > 0) &&
       !(uniforms.uSeaLevelKm.value > 0) &&
       !(uniforms.uHasOcean?.value > 0.5) &&

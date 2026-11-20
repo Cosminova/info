@@ -241,7 +241,7 @@ export const GROUND_DETAIL_GLSL = /* glsl */ `
     vec3 slope = transpose(uMapBasis) * mix(groundSlope, rockSlope, rock);
     vec3 basisNormal = normalize(mix(dir, normal, uGroundRelief));
     vec3 tangential = slope - dot(slope, basisNormal) * basisNormal;
-    normal = normalize(normal - tangential * 0.8);
+    normal = normalize(normal - tangential * mix(0.8, 0.55, uGroundRelief));
     // Rock is a touch darker than the soil it sheds.
     float shade = mix(groundFactor, rockFactor * 0.85, rock);
     return mix(shade, clamp(shade * occlusion, 0.22, 2.4), uGroundRelief);

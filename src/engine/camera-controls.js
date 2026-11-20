@@ -1310,12 +1310,23 @@ export class OrbitApproachControls {
       const radiusKm = Math.max(this.targetRadius + this.walkGroundKm, 1e-6);
       // Faster with height, so a hover over the plains is not a crawl.
       const boost = 1 + 59 * this._walkBoost ** 2.5;
-      const speed = this.walkSpeed * (this.flySpeed / 0.55) * run * boost * Math.max(1, this.walkEyeKm / 0.0017) ** 0.6;
+      const desiredSpeed = this.walkSpeed * (this.flySpeed / 0.55) * run * boost * Math.max(1, this.walkEyeKm / 0.0017) ** 0.6;
+      // On foot, never accelerate to kilometres/second. Higher flight retains
+      // its altitude-dependent speed; the collision guard still verifies steps.
+      const speed = Math.min(desiredSpeed, Math.max(0.006, this.walkEyeKm * 4) * (run > 1 ? 3 : 1));
       this.walkVelocity = speed;
       const step = (speed * dt) / radiusKm;
       const move = this._walkMove.copy(headingL).multiplyScalar(thrust).addScaledVector(rightL, strafe);
       if (move.lengthSq() > 1) move.normalize();
-      upL.addScaledVector(move, step).normalize();
+      const candidate = upL.clone().addScaledVector(move, step).normalize();
+      const floor = this.walkGroundAt ? this.walkGroundAt(candidate) : this.walkGroundKm;
+      if (Number.isFinite(floor)) {
+        upL.copy(candidate);
+        this.walkGroundKm = Math.max(this.walkGroundKm, floor);
+      } else {
+        // GPU collision data has not arrived: remain on verified ground.
+        this.walkVelocity = 0;
+      }
       headingL.addScaledVector(upL, -headingL.dot(upL)).normalize();
     }
     return this._walkView();

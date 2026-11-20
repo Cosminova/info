@@ -39,7 +39,7 @@ const SCALE_STEPS = [0.5, 0.58, 0.67, 0.75, 0.85, 1];
 // enough to hide it. A Retina display has twice that to give, and at its full
 // count the surface can cost several times a frame.
 const SCALE_FLOOR = platform.deviceClass === 'desktop'
-  ? Math.max(0.5, Math.min(0.75, 1 / Math.max(basePixelRatio(), 1)))
+  ? Math.max(0.5, Math.min(1, 1 / Math.max(basePixelRatio(), 1)))
   : 0.5;
 // Past the floor and still this far over budget, frames are spaced out so the
 // GPU is idle part of the time: run flat out it starves the browser's own

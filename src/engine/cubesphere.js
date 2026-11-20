@@ -367,7 +367,12 @@ export class CubeSphere {
 
     const corner = this._corner.set(ox, oy, oz).normalize();
     const edge = corner.distanceTo(centre) * 2;
-    const distance = Math.max(cameraLocal.distanceTo(centre), 1e-6);
+    // Refinement must measure the land, not sea-level beneath a mountain.
+    const distance = Math.max(Math.hypot(
+      cameraLocal.x - centre.x * this.cullRadius,
+      cameraLocal.y - centre.y * this.cullRadius,
+      cameraLocal.z - centre.z * this.cullRadius,
+    ), 1e-9);
 
     // Off-screen cull against the view cone through the screen corners. Without
     // this the whole near hemisphere is subdivided to full depth, and at low
@@ -416,8 +421,8 @@ export class CubeSphere {
     // The patch underfoot and its neighbours are seen edge-on too, but they are
     // what the walker stands on, so they keep their full split.
     if (this.grazingWeight > 0 && distance > edge * 3) {
-      const facing = (centre.x * (cameraLocal.x - centre.x) + centre.y * (cameraLocal.y - centre.y)
-        + centre.z * (cameraLocal.z - centre.z)) / distance;
+      const facing = (centre.x * (cameraLocal.x - centre.x * this.cullRadius) + centre.y * (cameraLocal.y - centre.y * this.cullRadius)
+        + centre.z * (cameraLocal.z - centre.z * this.cullRadius)) / distance;
       error *= Math.max(Math.abs(facing), this.grazingFloor) ** this.grazingWeight;
     }
     this._nError[node] = error;

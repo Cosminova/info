@@ -1,3 +1,6 @@
+import { TEST_SITES, siteDirection } from './engine/test-world.js';
+import { createTestWorldGuide } from './engine/test-world-guide.js';
+import { WalkSupport } from './engine/walk-support.js';
 /**
  * Cosminova: a real-scale, explorable universe.
  *
@@ -1705,6 +1708,10 @@ ui = createExplorerUI({
         renderScale: quality.renderScale,
         quality: quality.level,
         preset: quality.settings.preset,
+      renderedFrames,
+      renderFocused,
+      collisionWaiting: !!walkSupport?.pending,
+      collisionBlockedSteps: walkSupport?.blockedSteps ?? 0,
       };
     },
     craftRecord,
@@ -2224,64 +2231,21 @@ function walkingDetail(which) {
   return which === 'patch' ? walkDetail.patch : walkDetail.detail;
 }
 
-const walkProbe = { key: null, dirs: Array.from({ length: 15 }, () => new Vector3()), km: null, at: 0, last: 0, dir: new Vector3() };
-const walkRight = new Vector3();
+let walkSupport = null;
 function walkOnGround(surface, key, now) {
-  const planet = surface.planet;
-  const up = controls.walkLocal;
-  if (walkProbe.key !== key || walkProbe.epoch !== controls.walkGroundEpoch) {
-    walkProbe.key = key;
-    walkProbe.epoch = controls.walkGroundEpoch;
-    walkProbe.km = null;
-    walkProbe.at = -Infinity;
+  if (!walkSupport || walkSupport.planet !== surface.planet || walkSupport.epoch !== controls.walkGroundEpoch) {
+    walkSupport?.reset();
+    walkSupport = new WalkSupport(surface.planet, renderer);
+    walkSupport.epoch = controls.walkGroundEpoch;
   }
-  // The spread stays at the vertex spacing whatever the speed: widened, its
-  // highest point is a bump off to one side, and the walker rides over the
-  // tops of everything nearby and settles back down on stopping. The ground
-  // crossed while a read is in flight is covered by a strip straight ahead
-  // instead, so a rise is reached already standing on it.
-  const spacing = Math.max(planet.finestSpacingRadians() * 2, 2e-7);
-  const lead = (Math.abs(controls.walkVelocity) * 0.25) / surface.radius;
-  const moved = walkProbe.dir.angleTo(up);
-  const fresh = walkProbe.km === null;
-  const due = moved > spacing * 0.25 ? now - walkProbe.at > 90 : now - walkProbe.at > 400;
-  if ((fresh || due) && planet.group.visible) {
-    walkRight.crossVectors(controls.walkHeadingLocal, up).normalize();
-    const along = [-spacing, 0, spacing, spacing + lead * 0.5, spacing + lead];
-    let n = 0;
-    for (const a of along) {
-      for (let j = -1; j <= 1; j++) {
-        walkProbe.dirs[n++].copy(up)
-          .addScaledVector(controls.walkHeadingLocal, a)
-          .addScaledVector(walkRight, j * spacing)
-          .normalize();
-      }
-    }
-    const uniforms = planet.material.uniforms;
-    const wet = uniforms.uHasOcean?.value > 0 || planet.spec?.oceanFraction > 0;
-    const settle = (heights) => {
-      let km = -Infinity;
-      for (const h of heights) if (Number.isFinite(h) && Math.abs(h) < surface.radius * 0.25) km = Math.max(km, h);
-      if (!Number.isFinite(km)) return;
-      if (wet) km = Math.max(km, uniforms.uSeaLevelKm?.value ?? 0);
-      walkProbe.km = km;
-    };
-    const pending = walkProbe.km === null ? null : planet.groundHeightsKmAsync(renderer, walkProbe.dirs);
-    if (pending) pending.then(settle, () => {});
-    else if (walkProbe.km === null || !renderer.readRenderTargetPixelsAsync) settle(planet.groundHeightsKm(renderer, walkProbe.dirs));
-    if (pending || walkProbe.km !== null) {
-      walkProbe.at = now;
-      walkProbe.dir.copy(up);
-    }
+  controls.walkGroundAt = (dir) => walkSupport.floor(dir);
+  const floor = walkSupport.floor(controls.walkLocal, true);
+  if (Number.isFinite(floor)) {
+    const dt = Math.min(Math.max((now - (walkSupport.last ?? now)) / 1000, 0), 0.25);
+    const gap = floor - controls.walkGroundKm;
+    controls.walkGroundKm += gap > 0 ? gap : gap * Math.min(1, dt * 5);
   }
-  if (walkProbe.km !== null) {
-    // Up at once and down gently: stepping onto a rise must never put the eye
-    // inside it for a frame, and a dip is no hurry.
-    const dt = Math.min(Math.max((now - walkProbe.last) / 1000, 0), 0.25);
-    const gap = walkProbe.km - controls.walkGroundKm;
-    controls.walkGroundKm += gap > 0 || fresh ? gap : gap * Math.min(1, dt * 5);
-  }
-  walkProbe.last = now;
+  walkSupport.last = now;
   cameraGround.key = key;
   cameraGround.km = controls.walkGroundKm;
   cameraGround.altitudeKm = controls.walkEyeKm;
@@ -3188,13 +3152,37 @@ function collectLabelItems() {
   return labelItems;
 }
 
+let renderFocused = document.hasFocus();
+let renderedFrames = 0;
+const gpuFrameFences = [];
+let inputQuietUntil = 0;
+document.addEventListener("input", () => { inputQuietUntil = performance.now() + 250; });
+window.addEventListener('blur', () => { renderFocused = false; });
+window.addEventListener('focus', () => { renderFocused = true; lastFrame = performance.now(); quality.settle(800); });
+document.addEventListener('visibilitychange', () => { lastFrame = performance.now(); quality.settle(800); });
+
 function frame(now) {
   requestAnimationFrame(frame);
+  if (document.hidden) { lastFrame = now; return; }
+  // A visible background window gets one full-quality frame per second.
+  // Foreground renders are capped at 60; this leaves compositor/input headroom.
+  const frameBudget = renderFocused ? 1000 / 60 : 1000;
+  if (now < inputQuietUntil) return;
+  if (now - lastFrame < frameBudget - 1) return;
+  // Keep a bounded two-frame pipeline: overlap CPU/GPU work, but never build
+  // the long GPU queue that makes typing and the browser compositor stall.
+  const frameContext = renderer.getContext();
+  while (gpuFrameFences.length) {
+    const status = frameContext.clientWaitSync(gpuFrameFences[0], 0, 0);
+    if (status === frameContext.TIMEOUT_EXPIRED) break;
+    frameContext.deleteSync(gpuFrameFences.shift());
+  }
+  if (gpuFrameFences.length >= 2) return;
   if (quality.paceMs && now - lastFrame < quality.paceMs - 4) return;
   const interval = now - lastFrame;
   const dt = Math.min(interval / 1000, 0.25);
   lastFrame = now;
-  quality.sample(interval);
+  if (renderFocused) quality.sample(interval);
 
   if (state.playing) {
     state.date = new Date(state.date.getTime() + dt * 1000 * state.timeRate);
@@ -3212,6 +3200,7 @@ function frame(now) {
   probeGround();
 
   const resolved = resolveWorld(state.target);
+  testWorldGuide.hidden = state.target !== 'exo:gliese-12-b';
   const targetPos = resolved?.position ?? universe.get('earth').position;
   const targetRadius = resolved?.radius ?? 6371;
   if (resolved) controls.targetKey = resolved.key;
@@ -3612,7 +3601,7 @@ function frame(now) {
       if (!item.planet.group.visible) continue;
       // Once, and only for a world close enough to be worth it: the waterline
       // has to be measured against this planet's own relief.
-      if (item.spec.oceanFraction > 0 && !item.seaCalibrated && apparentPixels > 12) {
+      if (item.spec.oceanFraction > 0 && !item.spec.fixedSeaLevel && !item.seaCalibrated && apparentPixels > 12) {
         item.seaCalibrated = true;
         item.planet.calibrateSeaLevel(renderer, item.spec.oceanFraction);
       }
@@ -3749,11 +3738,11 @@ function frame(now) {
   const panoramaFade = 1 / (1 + (fromSun / PC_KM) * 6);
   // Under a lit sky the stars are there but drowned: the eye sets itself for
   // the daylight and they fall below it. Faded by the air the camera is in.
-  const daylight = (resolved?.kind === 'body' && surfaceOf(resolved.key)?.planet.daylight) || 0;
+  const daylight = surfaceOf(resolved?.key)?.planet.daylight || 0;
   const starsLeft = clamp(1 - 1.12 * daylight, 0, 1);
   // Under a closed deck the sun's disc is gone too; its light still arrives,
   // diffused, through the sky shader.
-  const groundPlanet = resolved?.kind === 'body' ? surfaceOf(resolved.key)?.planet : null;
+  const groundPlanet = surfaceOf(resolved?.key)?.planet ?? null;
   const decked = !!groundPlanet?.sky?.visible && (groundPlanet.skyUniforms?.uOvercast.value ?? 0) > 0.5
     && groundPlanet.material.uniforms.uOvercastSeen.value < 0.5;
   sun.group.visible = !decked;
@@ -3843,7 +3832,20 @@ function frame(now) {
     hole.setBehind(behindTarget.texture);
   }
   holePass.enabled = holeDrawn;
+  if (exoSystem) for (const item of exoSystem.planets) {
+    if (item.planet.group.visible) {
+      item.planet.skyRadianceCache?.update(renderer);
+      const u=item.planet.material.uniforms;
+      if (controls.mode === 'walk' && state.target === item.spec.key)
+        item.planet.surfaceScatter?.update(renderer,u.uCameraLocal.value,controls.walkGroundKm);
+      else if (item.planet.surfaceScatter) item.planet.surfaceScatter.group.visible=false;
+    }
+  }
   composer.render();
+  renderedFrames++;
+  const frameGL = renderer.getContext();
+  gpuFrameFences.push(frameGL.fenceSync(frameGL.SYNC_GPU_COMMANDS_COMPLETE, 0));
+  frameGL.flush();
 
   smoothedFps = smoothedFps * 0.92 + (1 / Math.max(dt, 1e-4)) * 0.08;
 
@@ -3872,8 +3874,67 @@ function tmpQuaternionInverse(q) {
   return _inverse;
 }
 
+function setTestLighting(mode = 'day') {
+  const item = exoSystem?.planets.find(p => p.spec.testWorld);
+  if (!item) return false;
+  const start = state.date.getTime(), period = item.spec.orbitDays * 86400000;
+  let best = -Infinity, chosen = start;
+  for (let i = 0; i < 96; i++) {
+    const time = start + period * i / 96;
+    exoSystem.place(new Date(time), controls.worldPosition);
+    const sun = item.local.clone().negate().normalize();
+    const score = sun.dot(controls.walkLocal) * (mode === 'night' ? -1 : 1);
+    if (score > best) { best = score; chosen = time; }
+  }
+  state.date = new Date(chosen); state.playing = false;
+  exoSystem.place(state.date, controls.worldPosition);
+  quality.settle(1200);
+  return true;
+}
+function visitTestBiome(id) {
+  const site = TEST_SITES.find(s => s.id === id);
+  if (!site) return false;
+  selectTarget('exo:gliese-12-b', { fly: false });
+  controls.stopFlight();
+  exoSystem.place(state.date, controls.worldPosition);
+  const surface = surfaceOf('exo:gliese-12-b');
+  controls.walkFrame = surface.orientation;
+  if (controls.mode !== 'walk') controls.startWalk();
+  controls._descent = null;
+  controls.walkLocal.fromArray(siteDirection(site));
+  controls.walkHeadingLocal.crossVectors(new Vector3(0,1,0), controls.walkLocal).normalize();
+  if (id === 'coast') controls.walkHeadingLocal.negate();
+  if (id === 'volcano') {
+    controls.walkLocal.addScaledVector(controls.walkHeadingLocal, 2.5 / surface.radius).normalize();
+    controls.walkHeadingLocal.negate();
+  }
+  if (id === 'alpine') {
+    const centre = controls.walkLocal.clone(), east = controls.walkHeadingLocal.clone();
+    const north = new Vector3().crossVectors(centre,east), candidates=[];
+    for(let y=-3;y<=3;y++) for(let x=-3;x<=3;x++)
+      candidates.push(centre.clone().addScaledVector(east,x*.004).addScaledVector(north,y*.004).normalize());
+    const h=surface.planet.groundHeightsKm(renderer,candidates);
+    let best=0;for(let i=1;i<h.length;i++)if(h[i]<h[best])best=i;
+    controls.walkLocal.copy(candidates[best]);
+    controls.walkHeadingLocal.copy(centre).addScaledVector(controls.walkLocal,-centre.dot(controls.walkLocal)).normalize();
+  }
+
+  controls.walkPitch = id === 'volcano' ? -0.22 : -0.06; controls.walkEyeKm = 0.0017;
+  controls.walkVelocity = 0; controls._walkBoost = 0;
+  controls.walkGroundEpoch = (controls.walkGroundEpoch ?? 0) + 1;
+  walkSupport?.reset(); walkSupport = null;
+  surface.planet.material.uniforms.uCameraLocal.value.copy(controls.walkLocal).multiplyScalar(surface.radius + 2);
+  controls.walkGroundKm = surface.planet.groundHeightsKm(renderer, [controls.walkLocal])[0] + 0.008;
+  setTestLighting('day');
+  return true;
+}
+const testWorldGuide = createTestWorldGuide(visitTestBiome, setTestLighting);
+
 window.cosminova = {
   ready: false,
+  testSites: TEST_SITES,
+  visitTestBiome,
+  setTestLighting,
   cosmos,
   ship,
   setShip,
@@ -4279,6 +4340,7 @@ window.cosminova = {
   },
   /** Screenshot scripts hide the interface rather than crop around it. */
   setUiVisible(visible) {
+    testWorldGuide.style.display = visible ? "" : "none";
     ui.setImmersive(!visible, true);
     return true;
   },
@@ -4392,6 +4454,8 @@ window.cosminova = {
       // The device profile is reported because it is otherwise invisible: it
       // decides shader loop bounds and buffer sizes before the first frame, so
       // by the time anything is measurable the evidence of it is gone.
+      renderedFrames, renderFocused,
+      collisionBlockedSteps: walkSupport?.blockedSteps ?? 0,
       deviceClass: platform.deviceClass,
       shell: platform.shell,
       targetFps: quality.settings.targetFps,

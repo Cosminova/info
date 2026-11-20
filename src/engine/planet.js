@@ -1,3 +1,7 @@
+import { biomeMaterialUniforms, BIOME_MATERIAL_GLSL } from './biome-materials.js';
+import { SurfaceScatter } from './surface-scatter.js';
+import { SkyRadianceCache, SKY_WEATHER_GLSL } from './sky-radiance-cache.js';
+import { TEST_WORLD_GLSL } from './test-world.js';
 import {
   AddEquation,
   AdditiveBlending,
@@ -285,6 +289,8 @@ const FRACTURE_GLSL = /* glsl */ `
  * against a datum needs the height and the gradient at the same time.
  */
 const RELIEF_GLSL = /* glsl */ `
+  ${TEST_WORLD_GLSL}
+
   // One uniform per knob rather than packed vectors, so that every process can be
   // switched off by itself from a test or a diagnostic view. Telling a procedural
   // artefact apart from a measured one means being able to render the same frame
@@ -323,6 +329,7 @@ const RELIEF_GLSL = /* glsl */ `
     marks = vec2(0.0);
     fracture = 0.0;
     fill = 0.0;
+    if (uTestWorld > 0.5) return testTerrain(d, pixelAngle);
     if (uCraterOctaves < 0.05 && uRoughness < 0.001 && uFractureDepth < 0.001 &&
         uIrregular < 0.001 && uMacroRelief < 0.001 && uBasinDepth < 0.001 && uTerrain < 0.00001 &&
         uCrustRelief < 0.001 && uFloodCoverage < 0.001 && uRiftCoverage < 0.001 &&
@@ -1214,6 +1221,8 @@ uniform float uWaveTime;
     return normalize((dir - tangential) / uAxisScale);
   }
 
+  ${BIOME_MATERIAL_GLSL}
+
   void main() {
     #include <logdepthbuf_fragment>
 
@@ -1256,9 +1265,12 @@ uniform float uWaveTime;
 
     // Stones and soil underfoot, on dry ground and only where a pixel is small
     // enough to show them.
+    vec3 terrainNormal = normal;
     float terrainSteep = 1.0 - max(dot(normal, dir), 0.0);
     float detailShade = 1.0;
-    if (uRockDensity > 0.001) {
+    float photoWeight = uTestWorld > 0.5 ? max(max(testRegion(dir,0),testRegion(dir,1)),max(testRegion(dir,2),testRegion(dir,6)))
+      * uBiomeReady * (1.0-smoothstep(.08,.32,terrainSteep)) * (1.0-smoothstep(80.0,250.0,length(vRel)*1000.0)) : 0.0;
+    if (uRockDensity > 0.001 && photoWeight < 0.999) {
       // The mean of the footprint's two sides rather than its long one: fading
       // on the long side clears the stones off the ground twenty metres out.
       float footprintM = length(vRel) * 1000.0 / uPixelsPerRadian * sqrt(footprintScale);
@@ -1266,6 +1278,12 @@ uniform float uWaveTime;
         float sea = uHasOcean > 0.5 ? wrapTexture(uOceanMap, uv).r : wet;
         detailShade = groundDetail(dir, (uCameraRel + vRel) * 1000.0, vHeight * 1000.0, footprintM, (1.0 - sea) * (1.0 - vSkirt), view, normal);
       }
+    }
+
+    if (uTestWorld > 0.5) {
+      float softer = max(testRegion(dir,2)*0.78, max(testRegion(dir,4)*0.65,testRegion(dir,1)*0.35));
+      detailShade = mix(detailShade,1.0,softer);
+      normal = normalize(mix(normal,terrainNormal,softer));
     }
 
     // The colour map runs out of resolution long before the geometry does: on a
@@ -1329,6 +1347,7 @@ uniform float uWaveTime;
     if (uIceLatitude > 0.01 && uHasColourMap < 0.5) {
       albedo = mix(albedo, uPaletteD, smoothstep(uIceLatitude - 0.08, uIceLatitude + 0.04, abs(dir.y)) * (1.0 - steep * 0.7));
     }
+    if (uTestWorld > 0.5) albedo = testBiomeColour(dir, groundKm, terrainSteep);
     if (wet > 0.0 && uHasColourMap < 0.5) {
       // Deep ocean and continental shelf. The shelf colour is mixed with what is
       // under it so a sandy coast shows through the shallows and a dark one
@@ -1337,6 +1356,9 @@ uniform float uWaveTime;
       vec3 shelf = mix(albedo * 0.55 + uSeaShallow * 0.6, uSeaShallow, 0.55);
       albedo = mix(albedo, mix(shelf, uSeaDeep, deep), wet);
     }
+
+    if (uTestWorld > 0.5 && wet < 0.01)
+      biomeMaterial(dir,(uCameraRel+vRel)*1000.0,vHeight,terrainSteep,terrainNormal,albedo,normal,detailShade);
 
     // Apply grain and crevice contrast AFTER broad geological colour mixing.
     albedo *= mix(1.0, detailShade, uGroundRelief);
@@ -1476,6 +1498,15 @@ uniform float uWaveTime;
       colour += uSunColour * spec * water * uSpecular * step(0.001, lit);
     }
 
+    if (uTestWorld > 0.5) {
+      float volcanicDistance = length(dir - testSites[5]) * uRadius;
+      float lava = (1.0 - smoothstep(1.3, 2.3, volcanicDistance)) * (1.0 - water);
+      colour += vec3(2.5, 0.29, 0.025) * lava * (0.85 + 0.15 * sin(uWaveTime * 0.6 + volcanicDistance * 5.0));
+      float shore = (1.0 - smoothstep(0.003, 0.035, max(depthKm, 0.0))) * water;
+      float foam = smoothstep(0.3, 0.9, sin(depthKm * 1100.0 - uWaveTime * 1.7));
+      colour = mix(colour, vec3(0.68,0.78,0.77) * uSunColour * uSunIntensity * (0.2 + lit), shore * foam * 0.65);
+    }
+
     // Cloud deck.
     //
     // Drawn into the surface rather than onto a shell of its own. A second
@@ -1485,7 +1516,7 @@ uniform float uWaveTime;
     // none of that: the cloud field is sampled along the view direction at the
     // deck's altitude, so it slides against the ground as you move, which is the
     // part the eye actually reads.
-    if (uCloudCover > 0.001) {
+    if (uCloudCover > 0.001 && (uTestWorld < 0.5 || length(uCameraLocal) - uRadius > 14.0)) {
       vec3 look = normalize(dir * (1.0 + uCloudHeight) - view * uCloudHeight * 1.4);
       // Sampled faster in latitude than in longitude, so systems come out drawn
       // out east-west the way rotation actually shears weather, instead of as
@@ -1911,12 +1942,22 @@ const SKY_INSCATTER_FRAGMENT = /* glsl */ `
   // over a lit surface instead of a black sky, and at uBrightness it drowns it.
   uniform float uFromSpace;
 
+  ${SKY_WEATHER_GLSL}
+
   void main() {
     #include <logdepthbuf_fragment>
 
     vec3 origin, ray;
     float near, len;
     if (!viewSegment(origin, ray, near, len)) discard;
+
+    if (uUseSkyLut > 0.5) {
+      vec3 localRay = transpose(uSkyBasis) * ray;
+      float latitude = asin(clamp(localRay.z,-1.0,1.0)) / 1.5707963;
+      vec2 uv = vec2(fract(atan(localRay.y,localRay.x)/6.2831853), 0.5+0.5*sign(latitude)*sqrt(abs(latitude)));
+      gl_FragColor = vec4(skyWeather(texture2D(uSkyRadianceLut,uv).rgb,origin,ray),1.0);
+      return;
+    }
 
     const int STEPS = ${platform.skyInscatterSteps};
 
@@ -1992,7 +2033,7 @@ const SKY_INSCATTER_FRAGMENT = /* glsl */ `
       vec3 opacity = 1.0 - exp(-(uRayleigh * column.x + vec3(uMie * column.y)));
       colour /= max(opacity, vec3(1e-4));
     }
-    gl_FragColor = vec4(colour, 1.0);
+    gl_FragColor = vec4(skyWeather(colour,origin,ray), 1.0);
   }
 `;
 
@@ -2299,8 +2340,10 @@ export class Planet {
             ?? ((spec.banding ?? 0) > 0 || this.radius > 20000 ? 0 : spec.atmosphere ? 0.3 : 0.6),
         },
         uStones: { value: spec.stones ?? 1 },
+        uTestWorld: { value: spec.testWorld ? 1 : 0 },
         uGroundRelief: { value: spec.groundRelief ?? 0 },
         ...groundTextureUniforms(),
+        ...biomeMaterialUniforms(spec.testWorld),
       },
       vertexShader: VERTEX,
       fragmentShader: FRAGMENT,
@@ -2390,6 +2433,7 @@ export class Planet {
       this._buildSky(spec, shellRadius, geometry);
     }
 
+    if (spec.testWorld) this.surfaceScatter = new SurfaceScatter(this);
     this._cameraLocal = new Vector3();
     this._sunLocal = new Vector3();
   }
@@ -2491,6 +2535,11 @@ export class Planet {
         uDustTint: { value: new Color(...(air.dustTint ?? [1, 1, 1])) },
         uDustBroad: { value: air.dustBroad ?? 0 },
         uFromSpace: { value: 0 },
+        uSkyWeather: { value: spec.testWorld ? 1 : 0 },
+        uWeatherTime: { value: 0 },
+        uUseSkyLut: { value: 0 },
+        uSkyRadianceLut: { value: null },
+        uSkyBasis: { value: new Matrix3() },
       },
       vertexShader: SKY_VERTEX,
       fragmentShader: SKY_INSCATTER_FRAGMENT,
@@ -2538,6 +2587,8 @@ export class Planet {
       mesh.renderOrder = order;
       this.sky.add(mesh);
     }
+    if (spec.testWorld) this.skyRadianceCache = new SkyRadianceCache(
+      [this.skyInscatterMaterial, this.skyInscatterGround], SKY_INSCATTER_FRAGMENT);
     this.sky.name = `${spec.key}-sky`;
     this.sky.visible = false;
     this.spin.add(this.sky);
@@ -2690,9 +2741,13 @@ export class Planet {
     renderer.setRenderTarget(probe.target);
     renderer.render(shared.scene, shared.camera);
     renderer.setRenderTarget(previous);
-    this._asyncProbe = renderer
-      .readRenderTargetPixelsAsync(probe.target, 0, 0, count, 1, probe.pixels)
-      .then(() => {
+    const read = renderer.readRenderTargetPixelsAsync(probe.target, 0, 0, count, 1, probe.pixels);
+    // Three keeps the pack buffer bound while its fence is pending. A synchronous
+    // landing query in that interval otherwise fails and silently returns zeros.
+    // The async reader rebinds its own buffer before getBufferSubData.
+    const gl = renderer.getContext();
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    this._asyncProbe = read.then(() => {
         const out = new Float32Array(count);
         for (let i = 0; i < count; i++) out[i] = probe.pixels[i * 4];
         return out;
@@ -2950,6 +3005,7 @@ export class Planet {
         const fade = clamp(1 - distance / Math.max(Math.abs(groundKm) * 100, 1), 0, 1);
         s.uGroundKm.value = groundKm * fade;
         const light = this.skyInscatterMaterial.uniforms;
+        light.uWeatherTime.value = performance.now() / 1000;
         const thickness = Math.max(a.uShellRadius.value - this.radius, 1e-3);
         const above = clamp((distance / thickness - 0.3) / 0.7, 0, 1);
         light.uFromSpace.value = above * above * (3 - 2 * above);

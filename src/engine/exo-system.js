@@ -80,7 +80,7 @@ function specFromPlanet(entry, described, hostKey) {
   // volatile class asked for depends on the shape of this world's own height
   // distribution, which is measured off the GPU on first sight: see
   // Planet.calibrateSeaLevel.
-  const oceanFraction = gaseous ? 0 : described.oceanLevel ?? 0;
+  const oceanFraction = gaseous ? 0 : gliese12b ? 0.45 : described.oceanLevel ?? 0;
   const seaLevelKm = oceanFraction
     ? (0.30 + 0.52 * oceanFraction) * MACRO_RELIEF * described.radiusKm
     : 0;
@@ -108,6 +108,8 @@ function specFromPlanet(entry, described, hostKey) {
     erosionFreq: gaseous ? 400 : Math.round(described.radiusKm / 10),
     rockDensity: gaseous ? 0 : gliese12b ? 0.85 : 0.5,
     groundRelief: gliese12b ? 1 : 0,
+    testWorld: gliese12b,
+    fixedSeaLevel: gliese12b,
     slopeRock: gliese12b ? 0.28 : undefined,
     // Mesas and stepped cliffs, strongest on dry worlds where nothing fills
     // the steps back in; benches a few hundred metres high.
@@ -118,7 +120,7 @@ function specFromPlanet(entry, described, hostKey) {
     // How large the surface provinces are: a world of a few continents or one
     // of many islands.
     paletteFreq: gaseous ? 2.2 : described.provinceScale,
-    photometry: gaseous ? 0.1 : 0.75,
+    photometry: gaseous ? 0.1 : gliese12b ? 0.25 : 0.75,
     albedoBoost: gaseous ? 1.15 : 1.25,
     iceLatitude: gliese12b ? 0 : described.icecapLatitude,
     // Warm grey basalt, weathered ochre and pale mineral dust; no violet tint.
@@ -132,22 +134,22 @@ function specFromPlanet(entry, described, hostKey) {
     heatGlow: described.heatGlow,
     heatColour: described.heatColour,
     polarSmooth: gaseous ? 1 : 0,
-    seaLevelKm,
+    seaLevelKm: gliese12b ? 1.1 : seaLevelKm,
     oceanFraction,
-    seaDeep: stops?.sea,
-    seaShallow: stops?.shelf,
+    seaDeep: gliese12b ? [0.012,0.065,0.11] : stops?.sea,
+    seaShallow: gliese12b ? [0.035,0.26,0.25] : stops?.shelf,
     // Sun glint is what tells you at a glance that the blue is liquid.
     specular: seaLevelKm > 0 ? 0.9 : 0,
     // Gas giants carry their weather in their own palette already; this is the
     // deck over a solid surface.
-    cloudCover: gaseous ? 0 : described.cloudCover,
+    cloudCover: gaseous ? 0 : gliese12b ? 0.52 : described.cloudCover,
     // Storm cells, not continents: a handful of cycles over the whole sphere
     // gives half a dozen blobs and reads as marbling rather than weather.
     cloudFreq: 2.6 + described.provinceScale * 0.6 + (described.radiusEarth > 2 ? 1.2 : 0),
     maxPatches: gaseous ? 1200 : 1800,
     maxLevel: gaseous ? 13 : 19,
     pixelsPerQuad: 6,
-    atmosphere: gaseous
+    atmosphere: gliese12b ? { height: 0.018, density: 1.45, tint: [0.35,0.55,1], skyBrightness: 4.5 } : gaseous
       ? { height: 0.08, density: 2.2, tint: palette[0] }
       : airless
         ? null
@@ -166,7 +168,7 @@ function specFromPlanet(entry, described, hostKey) {
       : undefined,
     geology: gaseous ? null : inventGeology({ radiusKm: described.radiusKm, bulk: described.bulk === 'aquaria' ? 'ice' : 'rock' }, random),
     details: detailsOf(described),
-    classLabel: described.label,
+    classLabel: gliese12b ? "Artistic biome test world" : described.label,
     aAu: entry.aAu,
     periodDays: entry.periodDays,
     eccentricity: entry.eccentricity ?? 0,
@@ -409,6 +411,8 @@ export class ExoSystem {
     this.companion?.star.group.removeFromParent();
     this.companion?.twin?.star.group.removeFromParent();
     for (const item of this.planets) {
+      item.planet.skyRadianceCache?.dispose();
+      item.planet.surfaceScatter?.dispose();
       item.planet.group.removeFromParent();
       for (const moon of item.moons) moon.planet.group.removeFromParent();
       if (item.rings) {
