@@ -16,12 +16,13 @@ try{
    const s=window.cosminova,p=s.exoSystem.get('exo:gliese-12-b').planet;
    const centre=s.controls.walkLocal.clone().fromArray(siteDirection(TEST_SITES.find(x=>x.id===id)));
    const east=centre.clone().set(-centre.z,0,centre.x).normalize();
-   const dirs=Array.from({length:65},(_,i)=>centre.clone().addScaledVector(east,(i-32)*.3125/p.radius).normalize());
+   const dirs=Array.from({length:65},(_,i)=>centre.clone().addScaledVector(east,(i-32)*1.25/p.radius).normalize());
    const heights=p.groundHeightsKm(s.renderer,dirs);
-   return {id,minKm:Math.min(...heights),maxKm:Math.max(...heights),reliefM:(Math.max(...heights)-Math.min(...heights))*1000};
+   return {id,spanKm:80,minKm:Math.min(...heights),maxKm:Math.max(...heights),reliefM:(Math.max(...heights)-Math.min(...heights))*1000};
   },id);
   assert.ok(result.reliefM>500,`${id} needs real mountain geometry`);results.push(result);
   await page.screenshot({path:`${out}/${id}.png`});
+  await page.evaluate(()=>{const c=window.cosminova.controls;c.walkEyeKm=12;c.walkPitch=-.7;});await new Promise(r=>setTimeout(r,1200));await page.screenshot({path:`${out}/${id}-aerial.png`});
  }
  assert.deepEqual(errors,[]);fs.writeFileSync(`${out}/validation.json`,JSON.stringify({results,errors},null,2));console.log(JSON.stringify(results,null,2));
 }finally{await browser.close();}

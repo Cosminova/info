@@ -53,6 +53,8 @@ export class SurfaceScatter {
     for(let i=0;i<pos.count;i++){const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);const f=.8+.2*Math.sin(x*7+y*13+z*5);pos.setXYZ(i,x*f,y*f,z*f);}rock.computeVertexNormals();
     const blade=new BufferGeometry();blade.setAttribute('position',new Float32BufferAttribute([-.015,0,0,.015,0,0,.005,.6,0,.005,.6,0,.015,0,0,.015,1,0],3));blade.computeVertexNormals();
     this.rocks=this._mesh(rock,false,POOL_CELLS*ROCKS_PER_CELL);
+    // Keep the shared geographical grass cache, but no placed rock props.
+    this.rocks.visible=false;
     this.grass=this._mesh(blade,true,POOL_CELLS*ROCKS_PER_CELL*BLADES);
     this.cache=new Map();this.resident=new Map();this.desired=new Map();this.free=Array.from({length:POOL_CELLS},(_,i)=>POOL_CELLS-1-i);
     this.probe={};this.pending=false;this.generation=0;this.scanAt=null;this.anchored=false;

@@ -149,7 +149,7 @@ function specFromPlanet(entry, described, hostKey) {
     maxPatches: gaseous ? 1200 : 1800,
     maxLevel: gaseous ? 13 : 19,
     pixelsPerQuad: 6,
-    atmosphere: gliese12b ? { height: 0.018, density: 1.45, tint: [0.35,0.55,1], skyBrightness: 4.5 } : gaseous
+    atmosphere: gliese12b ? { height: 0.018, density: 0.85, tint: [0.35,0.55,1], skyBrightness: 2.0 } : gaseous
       ? { height: 0.08, density: 2.2, tint: palette[0] }
       : airless
         ? null

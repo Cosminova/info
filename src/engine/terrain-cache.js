@@ -182,12 +182,12 @@ export const CACHE_GLSL = /* glsl */ `
       // Less the fall of the ground away from this point's horizon plane.
       // Past the first few steps the penumbra below is wider than half a texel
       // of slope, so the nearest texel does as well as four filtered ones.
-      float ground = k < 6 ? cacheHeight(q, l)
+      float ground = (k < 6 || uTestWorld > 0.5) ? cacheHeight(q, l)
         : texelFetch(uCacheHeight, cacheCell(floor(q / cacheTexel(l)), l), 0).r;
       float rise = ground - start - bias - run * run / (2.0 * uRadius);
       // Clearance in units of the penumbra, widened by how far this level's
       // filtered heights can be trusted at this distance.
-      float spread = sunSpread + 0.5 * cacheTexel(l) / dist;
+      float spread = sunSpread + (uTestWorld > 0.5 ? 1.5 : 0.5) * cacheTexel(l) / dist;
       clearance = min(clearance, (tanEl - rise / run) / spread);
       if (clearance < -1.0) break;
       dist *= 1.25;

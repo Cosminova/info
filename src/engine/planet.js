@@ -1249,6 +1249,13 @@ uniform float uWaveTime;
     float footprint = (length(vRel) / uRadius) / uPixelsPerRadian * sqrt(footprintScale);
     vec3 normal = surfaceNormal(
       dir, pixelAngle, footprint, craterShadow, craterMarks, fractureDepth, groundKm);
+    if (uTestWorld > 0.5 && uCacheOn < 0.5) {
+      // At orbital footprints use the band-limited elevation for coverage as
+      // well as colour: subpixel islands must not alternate land/water pixels.
+      float distant = smoothstep(.00008,.0008,pixelAngle);
+      groundKm = mix(groundKm,gTestFilteredHeight,distant);
+      normal = normalize(mix(normal,dir,smoothstep(.0002,.003,pixelAngle)));
+    }
 
     // How far under water this point is, and how much of the sea's own character
     // it should take on. Shallow water keeps the colour of what is below it,
@@ -1349,7 +1356,7 @@ uniform float uWaveTime;
     if (uIceLatitude > 0.01 && uHasColourMap < 0.5) {
       albedo = mix(albedo, uPaletteD, smoothstep(uIceLatitude - 0.08, uIceLatitude + 0.04, abs(dir.y)) * (1.0 - steep * 0.7));
     }
-    if (uTestWorld > 0.5) albedo = testBiomeColour(dir, groundKm, terrainSteep);
+    if (uTestWorld > 0.5) albedo = testBiomeColour(dir, groundKm, terrainSteep, pixelAngle);
     if (wet > 0.0 && uHasColourMap < 0.5) {
       // Deep ocean and continental shelf. The shelf colour is mixed with what is
       // under it so a sandy coast shows through the shallows and a dark one
@@ -1509,7 +1516,7 @@ uniform float uWaveTime;
       colour += vec3(2.5, 0.29, 0.025) * lava * (0.85 + 0.15 * sin(uWaveTime * 0.6 + volcanicDistance * 5.0));
       float shore = (1.0 - smoothstep(0.003, 0.035, max(depthKm, 0.0))) * water;
       float foam = smoothstep(0.3, 0.9, sin(depthKm * 1100.0 - uWaveTime * 1.7));
-      colour = mix(colour, vec3(0.68,0.78,0.77) * uSunColour * uSunIntensity * (0.2 + lit), shore * foam * 0.65);
+      colour = mix(colour, vec3(0.68,0.78,0.77) * uSunColour * uSunIntensity * (0.2 + lit), shore * foam * 0.65 * (1.0-smoothstep(.000002,.00002,pixelAngle)));
     }
 
     // Cloud deck.
