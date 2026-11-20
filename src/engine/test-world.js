@@ -23,7 +23,7 @@ export const TEST_WORLD_GLSL = /* glsl */ `
   // retaining a matching height gradient for materials and terrain lighting.
   vec4 testMountainRidges(vec3 p) {
     vec4 sum=vec4(0.0);float amp=0.5,freq=1.0;
-    for(int i=0;i<5;i++) {
+    for(int i=0;i<3;i++) {
       vec4 n=noised(p*freq);
       float rounded=sqrt(n.x*n.x+0.025),crest=1.0-rounded;
       sum.x+=amp*crest*crest;
@@ -35,7 +35,7 @@ export const TEST_WORLD_GLSL = /* glsl */ `
   vec4 testTerrain(vec3 d, float pixelAngle) {
     // Interior sites need only their own field. Avoid evaluating continent,
     // crags and distant ridges for every vertex and fragment in a meadow.
-    vec4 hill = fbmd(d * 190.0 + 6.1, 4, 2.07, 0.34);
+    vec4 hill = fbmd(d * 190.0 + 6.1, 3, 2.07, 0.34);
     vec4 t = vec4(0.0);
     bool interior = false;
     for(int j=0;j<7;j++) if(dot(d,testSites[j])>=0.9995) interior=true;
@@ -60,25 +60,24 @@ export const TEST_WORLD_GLSL = /* glsl */ `
       float h = 1.6 + hill.x * 0.15;
       vec3 slope = hill.yzw * 28.5;
       if (i == 0) { vec3 east = normalize(cross(vec3(0,1,0), testSites[i])); h = 1.13 + clamp(dot(d, east) * 450.0,-0.7,0.7) + hill.x * 0.005; slope = east * (abs(dot(d,east)*450.0)<0.7?450.0:0.0) + hill.yzw * 0.95; }
-      if (i == 2) {
-        vec3 wind = normalize(cross(vec3(0,1,0),testSites[i]));
-        vec4 warp = fbmd(d*1000.0+7.1,3,2.0,0.4);
-        float phase = dot(d,wind)*20000.0+warp.x*2.0;
-        h=1.9+hill.x*.15+.028*(sin(phase)+.22*sin(phase*2.0));
-        slope=hill.yzw*28.5+.028*(cos(phase)+.44*cos(phase*2.0))*(wind*20000.0+warp.yzw*2000.0);
-      }
-      if (i == 3) {
-        // Broad connected massifs and quieter flanks. The existing hill field
-        // bends the range and creates wide valleys between the highlands.
-        vec3 warpAxis = vec3(0.8, -0.35, 0.55);
-        vec4 alpine = testMountainRidges(d * 480.0 + warpAxis * hill.x + 3.7);
-        vec3 gradient = alpine.yzw * 480.0 + hill.yzw * (190.0 * dot(alpine.yzw, warpAxis));
-        float valley = smoothstep(-0.15, 0.10, hill.x);
-        float vq = clamp((hill.x + 0.15) / 0.25, 0.0, 1.0);
-        float valleyDerivative = 6.0 * vq * (1.0 - vq) / 0.25;
-        vec4 crag = fbmd(d * 1600.0 + 41.0, 3, 2.03, 0.32);
-        h = 3.2 + alpine.x * 4.0 + valley * 0.8 + hill.x * 0.1 + crag.x * 0.02;
-        slope = gradient * 4.0 + hill.yzw * (190.0 * (0.8 * valleyDerivative + 0.1)) + crag.yzw * 32.0;
+      if (i == 1 || i == 2 || i == 3) {
+        // Kilometre-scale ranges, with a broad drainage valley through the
+        // landing region. Warping bends the range; fine octaves shape shoulders
+        // rather than imposing metre-scale washboard noise on the walker.
+        vec3 east = normalize(cross(vec3(0,1,0), testSites[i]));
+        float across = dot(d - testSites[i], east) * uRadius;
+        float bend = across + hill.x * 1.8;
+        float valley = 1.0 - exp(-bend*bend/6.0);
+        vec3 valleyGradient = (east*uRadius + hill.yzw*342.0)
+          * (2.0*bend/6.0) * (1.0-valley);
+        vec3 warpAxis = vec3(0.8,-0.35,0.55);
+        vec4 ridge = testMountainRidges(d*1100.0 + warpAxis*hill.x + 3.7);
+        vec3 gradient = ridge.yzw*1100.0 + hill.yzw*(190.0*dot(ridge.yzw,warpAxis));
+        float relief = i == 3 ? 5.5 : i == 1 ? 3.2 : 1.8;
+        float base = i == 3 ? 2.4 : i == 1 ? 1.6 : 1.9;
+        float massif = max(0.0, ridge.x + 0.48);
+        h = base + hill.x*.12 + valley*massif*relief;
+        slope = hill.yzw*22.8 + relief*(valleyGradient*massif + valley*gradient);
       }
       if (i == 4) { vec4 ridge = ridgedd(d * 38.0 + 3.7, 6); h = 2.8 + ridge.x * 0.45; slope = ridge.yzw * 17.1; }
       if (i == 5) {

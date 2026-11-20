@@ -27,12 +27,19 @@ export const BIOME_MATERIAL_GLSL=/*glsl*/`
     vec3 local=uMapBasis*rel;
     vec2 uv=(uMapFrac.xy+local.xy-(uMapBasis*dir).xy*heightKm*1000.0)/(living?2.0:4.0);
     vec2 dx=dFdx(uv),dy=dFdy(uv);
-    vec3 tex=living?textureGrad(uBiomeGrass,uv,dx,dy).rgb:textureGrad(uBiomeSand,uv,dx,dy).rgb;
-    vec4 packed=textureGrad(uBiomeNormal,uv,dx,dy)*2.0-1.0;
+    // Shifted dual samples (also used by the rock material) break the regular
+    // grass/sand tiling. Use the same blend for colour and normal data, with
+    // original derivatives to keep mip filtering stable while walking.
+    float pick=textureLod(uBiomeNormal,uv*.125+0.37,3.0).x*16.0;
+    float cell=floor(pick), blend=smoothstep(.2,.8,fract(pick));
+    vec2 a=uv+sin(vec2(3.0,7.0)*cell), b=uv+sin(vec2(3.0,7.0)*(cell+1.0));
+    vec3 tex=living?mix(textureGrad(uBiomeGrass,a,dx,dy).rgb,textureGrad(uBiomeGrass,b,dx,dy).rgb,blend)
+      :mix(textureGrad(uBiomeSand,a,dx,dy).rgb,textureGrad(uBiomeSand,b,dx,dy).rgb,blend);
+    vec4 packed=mix(textureGrad(uBiomeNormal,a,dx,dy),textureGrad(uBiomeNormal,b,dx,dy),blend)*2.0-1.0;
     vec2 n=living?packed.xy:packed.zw;
     vec3 slope=transpose(uMapBasis)*vec3(-n/max(sqrt(max(1.0-dot(n,n),.1)),.4),0.0);
     slope-=terrainNormal*dot(slope,terrainNormal);
-    normal=normalize(mix(normal,normalize(terrainNormal-slope*.35),weight));
+    normal=normalize(mix(normal,normalize(terrainNormal-slope*.12),weight));
     albedo=mix(albedo,tex,weight);
     shade=mix(shade,1.0,weight);
   }

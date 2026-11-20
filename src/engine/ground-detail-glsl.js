@@ -191,34 +191,33 @@ export const GROUND_DETAIL_GLSL = /* glsl */ `
     // Tiles per 1024 m: soil at its own size, 2 m, and again at 10.6 m for
     // broad light and dark only, which breaks up the repeat without blowing
     // the stones up to boulders; rock at 4 m, 28 m, 146 m and 512 m, the
-    // larger for the faces of mountains seen from far off. Gliese adds
-    // 2 km and 8 km layers to carry weathering onto the broad slopes.
+    // larger for weathering colour on faces seen from far off. Mountain
+    // shape comes from geometry, not kilometre-wide pebble normals.
     const float SOIL[2] = float[2](512.0, 97.0);
-    const float ROCK[6] = float[6](256.0, 37.0, 7.0, 2.0, 0.5, 0.125);
+    const float ROCK[4] = float[4](256.0, 37.0, 7.0, 2.0);
     float stony = mix(0.45, 1.0, uStones);
     for (int i = 0; i < 2; i++) {
       float f = fadeBelow(fp, 1024.0 / SOIL[i]) * weight;
       if (f < 0.01) continue;
       vec3 gs, rs;
-      vec4 t = groundLayer(block, w, SOIL[i], viewLocal, i == 0 ? closeRelief * 0.035 : 0.0, gs, rs);
-      groundFactor *= 1.0 + (t.x * 2.0 - 1.0) * f * stony * (i == 0 ? 1.0 : 0.35);
-      groundSlope += gs * f * stony * (i == 0 ? 0.6 : 0.12);
+      vec4 t = groundLayer(block, w, SOIL[i], viewLocal, i == 0 ? closeRelief * 0.007 : 0.0, gs, rs);
+      groundFactor *= 1.0 + (t.x * 2.0 - 1.0) * f * stony * (i == 0 ? mix(1.0, 0.55, uGroundRelief) : 0.35);
+      groundSlope += gs * f * stony * (i == 0 ? mix(0.6, 0.2, uGroundRelief) : 0.12);
       if (i == 0) groundH = mix(0.5, t.y, f);
     }
-    for (int i = 0; i < 6; i++) {
-      if (i >= 4 && uGroundRelief < 0.01) break;
+    for (int i = 0; i < 4; i++) {
       float f = fadeBelow(fp, 1024.0 / ROCK[i]) * weight;
       if (f < 0.01) continue;
       vec3 gs, rs;
-      vec4 t = groundLayer(block, w, ROCK[i], viewLocal, i == 0 ? closeRelief * 0.06 : 0.0, gs, rs);
-      rockFactor *= 1.0 + (t.z * 2.0 - 1.0) * f * (i >= 4 ? 0.45 : mix(0.8, 0.85, uGroundRelief));
-      rockSlope += rs * f * (i == 0 ? 0.9 : i >= 4 ? 0.32 : 0.6);
+      vec4 t = groundLayer(block, w, ROCK[i], viewLocal, i == 0 ? closeRelief * 0.015 : 0.0, gs, rs);
+      rockFactor *= 1.0 + (t.z * 2.0 - 1.0) * f * mix(0.8, 0.55, uGroundRelief);
+      rockSlope += rs * f * (i == 0 ? mix(0.9, 0.45, uGroundRelief) : mix(0.6, i == 1 ? 0.18 : 0.0, uGroundRelief));
       if (i == 1) rockH = mix(0.5, t.w, f);
       // Weathered bedrock also modulates the dusty slopes at middle distance;
       // without this, only cliffs have any structure beyond the 10 m soil tile.
       if (i >= 2) {
-        groundFactor *= 1.0 + (t.z * 2.0 - 1.0) * f * 0.5 * uGroundRelief;
-        groundSlope += rs * f * 0.22 * uGroundRelief;
+        groundFactor *= 1.0 + (t.z * 2.0 - 1.0) * f * 0.15 * uGroundRelief;
+        // Broad weathering changes colour, never the apparent surface normal.
       }
     }
     float rock = smoothstep(0.35, 0.65, rockBias + (rockH - groundH) * 0.6 - 0.1 + uRockDensity * 0.1);

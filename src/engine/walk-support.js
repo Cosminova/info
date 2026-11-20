@@ -1,8 +1,9 @@
-import { Vector3 } from 'three';
+import { Vector3, Ray } from 'three';
 
 // A GPU-confirmed tile of the DRAWN vertex lattice. Movement may only enter a
 // confirmed tile. A slow fence/readback therefore delays a step, never lets the
-// eye tunnel into a hillside. The floor conservatively encloses its triangles.
+// eye tunnel into a hillside. Follow the triangle planes continuously rather
+// than stepping between neighbourhood vertex maxima.
 export class WalkSupport {
   constructor(planet, renderer) {
     this.planet = planet;
@@ -50,10 +51,20 @@ export class WalkSupport {
     const x = c.dot(tile.r) / tile.r.lengthSq() * tile.n - tile.loX;
     const y = c.dot(tile.u) / tile.u.lengthSq() * tile.n - tile.loY;
     if (x < 1 || y < 1 || x >= 6 || y >= 6) return null;
-    const ix = Math.floor(x), iy = Math.floor(y);
+    // Cache the exact morphed vertex positions once per GPU readback. Radial
+    // intersection follows the rendered triangle plane continuously, including
+    // the diagonal. Scanning the small tile also handles collapsed morph cells.
+    if (!tile.vertices) tile.vertices = tile.dirs.map((d, i) =>
+      d.clone().multiplyScalar(this.planet.radius + tile.heights[i]));
+    const ray = new Ray(new Vector3(), dir), hit = new Vector3();
     let h = -Infinity;
-    // Include neighbouring vertices for morphing and float roundoff at edges.
-    for (let v = iy - 1; v <= iy + 2; v++) for (let u = ix - 1; u <= ix + 2; u++) h = Math.max(h, tile.heights[v * 8 + u]);
+    for (let v = 0; v < 7; v++) for (let u = 0; u < 7; u++) {
+      const a = v * 8 + u, b = a + 1, d = a + 8, e = d + 1;
+      if (ray.intersectTriangle(tile.vertices[a], tile.vertices[b], tile.vertices[e], false, hit))
+        h = Math.max(h, hit.length() - this.planet.radius);
+      if (ray.intersectTriangle(tile.vertices[a], tile.vertices[e], tile.vertices[d], false, hit))
+        h = Math.max(h, hit.length() - this.planet.radius);
+    }
     const sea = this.planet.material.uniforms.uSeaLevelKm.value;
     return Number.isFinite(h) ? Math.max(h, sea > 0 ? sea : -Infinity) + 0.0006 : null;
   }
