@@ -96,14 +96,14 @@ export function specFromPlanet(entry, described, hostKey) {
     rotationHours: described.rotationHours,
     tiltDeg: described.tiltDeg,
     craterFreq: gaseous ? 80 : Math.round(260 * described.craterScale),
-    craterOctaves: gaseous ? 0 : described.craterOctaves,
+    craterOctaves: gaseous ? 0 : Math.min(described.craterOctaves,character.kind==='cratered'?5:3),
     craterDepth: described.craterDepth,
     craterDensity: described.craterDensity * (character.craterFactor ?? 1),
     roughness: described.roughness,
     // Continents, ranges and hills, relatively taller on a small world the way
     // Mars stands higher for its size than Earth. The ridged swell under them
     // is turned down: flooded on its own it filled into round pools.
-    terrain: gaseous ? 0 : clamp(0.0024 * Math.sqrt(6371 / described.radiusKm), 0.0012, 0.006) * appearance.relief,
+    terrain: gaseous ? 0 : clamp(0.0008 * Math.sqrt(6371 / described.radiusKm), 0.0004, 0.002) * appearance.relief,
     continentScale: appearance.continentScale,
     naturalSurface: true,
     landscapeKind: character.kind,
@@ -123,11 +123,11 @@ export function specFromPlanet(entry, described, hostKey) {
     // the steps back in; benches a few hundred metres high.
     // Benched mesa country is a local landform, not a world's whole surface:
     // laid over everything it turned the land into contour lines.
-    terrace: gaseous ? 0 : clamp((described.terrace ?? 0) * (oceanFraction > 0.6 ? 0.4 : 1) * 1.3 - 0.8, 0, 0.45),
+    terrace: gaseous ? 0 : character.kind==='rifted' ? .4 : clamp((described.terrace ?? 0) * (oceanFraction > 0.6 ? 0.4 : 1) * 1.3 - 0.8, 0, 0.45),
     terraceKm: 0.12 + ((described.terrace ?? 0) * 13.7 % 1) * 0.5,
     // How large the surface provinces are: a world of a few continents or one
     // of many islands.
-    paletteFreq: gaseous ? 2.2 : described.provinceScale,
+    paletteFreq: gaseous ? 1.1 + appearance.bandScale * 1.3 : described.provinceScale * appearance.continentScale,
     photometry: gaseous ? 0.1 : gliese12b ? 0.25 : 0.75,
     albedoBoost: 1.05,
     iceLatitude: gaseous || gliese12b ? 0 : character.kind==='glacial' ? .45 : described.temperatureK<255 ? Math.max(.75,described.icecapLatitude) : 0,
@@ -153,7 +153,7 @@ export function specFromPlanet(entry, described, hostKey) {
     cloudCover: gaseous ? 0 : gliese12b ? 0.52 : character.cloudCover,
     // Storm cells, not continents: a handful of cycles over the whole sphere
     // gives half a dozen blobs and reads as marbling rather than weather.
-    cloudFreq: appearance.cloudScale,
+    cloudFreq: gliese12b ? appearance.cloudScale : character.cloudScale ?? appearance.cloudScale,
     maxPatches: gaseous ? 1200 : 1800,
     maxLevel: gaseous ? 13 : 19,
     pixelsPerQuad: 6,
@@ -183,46 +183,15 @@ export function specFromPlanet(entry, described, hostKey) {
   };
 }
 
-function specFromMoon(entry, described, parentKey) {
-  const palette = paletteArrays(described);
+export function specFromMoon(entry, described, parentKey) {
   const radiusKm = Math.max(described.radiusKm, 2);
-  // Crater frequency is in cells per radius, so a fixed value would give a 5 km
-  // moonlet nothing but 25-metre pits and a 2,000 km moon nothing but basins.
-  // Anchoring the largest cell near a fixed fraction of the body instead keeps
-  // the basin-to-pit range comparable across sizes, and small bodies get a
-  // saturated surface because they have had no resurfacing to erase anything.
-  const craterFreq = clamp(radiusKm * 0.12 * described.craterScale, 8, 260);
-  return {
-    key: exoKey(entry.name),
-    name: entry.name,
-    parent: parentKey,
-    radiusKm,
-    rotationHours: described.rotationHours || 20,
-    tiltDeg: described.tiltDeg,
-    inclinationDeg: entry.inclinationDeg,
-    craterFreq,
-    craterOctaves: 7,
-    // A moon that has been resurfaced keeps shallow filled craters; one that
-    // never was keeps every sharp rim it was given.
-    craterDepth: (radiusKm < 200 ? 0.3 : 0.22) * (0.7 + described.craterDepth * 1.6),
-    craterDensity: radiusKm < 200 ? 0.85 : 0.6,
-    roughness: radiusKm < 200 ? 0.32 : 0.22,
-    terrain: radiusKm > 300 ? 0.0016 : 0,
-    photometry: 1,
-    albedoBoost: 1.35,
-    iceLatitude: described.icecapLatitude,
-    palette,
-    paletteFreq: described.provinceScale,
-    geology: inventGeology({ radiusKm, bulk: described.temperatureK < 170 ? 'ice' : 'rock' }, seeded(hashName(`${entry.name}:geo`))),
-    details: detailsOf(described),
-    maxPatches: 1600,
-    maxLevel: 18,
-    patchResolution: 20,
-    pixelsPerQuad: 5,
-    classLabel: described.label,
-    aAu: entry.aAu,
-    periodDays: entry.periodDays,
-  };
+  const spec = specFromPlanet(entry, {...described, gaseous:false, radiusKm,
+    oceanLevel:0, volatiles:'airless'}, parentKey);
+  return {...spec, parent:parentKey, atmosphere:null, cloudCover:0,
+    seaLevelKm:0, oceanFraction:0, inclinationDeg:entry.inclinationDeg,
+    craterFreq:clamp(radiusKm*.12*described.craterScale,8,260),
+    craterOctaves:spec.landscapeKind==='cratered'?5:3,
+    maxPatches:1000,maxLevel:18,patchResolution:16,pixelsPerQuad:7};
 }
 
 function hostPosition(system) {
@@ -264,6 +233,10 @@ export class ExoSystem {
     this.companion = companionFor(system, teff);
     if (this.companion?.close) this.luminositySol += this.companion.luminositySol;
 
+    if(this.companion){
+      this.companion.key=`${this.key}:B`;this.companion.name=this.companion.name??`${system.host} companion${this.companion.modeled ? " (modeled)" : " B"}`;
+      if(this.companion.twin){this.companion.twin.key=`${this.key}:C`;this.companion.twin.name=this.companion.twin.name??`${system.host} companion C`;}
+    }
     this.planets = [];
     this.moons = [];
     for (const entry of system.planets) {
@@ -358,6 +331,8 @@ export class ExoSystem {
 
   /** A body's exact offset from the host star, or null if it is not one of this system's. */
   localOf(key) {
+    for(const c of [this.companion,this.companion?.twin])if(c?.key===key)return c.local;
+
     if (key === this.key) return ZERO;
     for (const item of this.planets) if (item.spec.key === key) return item.local ?? null;
     for (const moon of this.moons) if (moon.spec.key === key) return moon.local ?? null;
@@ -372,12 +347,14 @@ export class ExoSystem {
    * Only valid once `place` has run for the current date.
    */
   get(key) {
+    for(const c of [this.companion,this.companion?.twin])if(c?.key===key)
+      return {key,position:c.world,orientation:IDENTITY,spec:{key,name:c.name,parent:this.key,radiusKm:c.star.radius},star:c.star};
     if (key === this.key) {
       return {
         key,
         position: this.position,
         orientation: IDENTITY,
-        spec: { name: this.system.host, radiusKm: this.star.radiusKm },
+        spec: { name: this.system.host, radiusKm: this.star.radius },
       };
     }
     for (const item of this.planets) {
@@ -442,10 +419,14 @@ export class ExoSystem {
  * brighter of the two. Catalogue systems keep the stars they are known to have.
  */
 function companionFor(system, teff) {
-  if (!system.generated) return knownCompanion(system);
+  if (!system.generated) {
+    const known=knownCompanion(system);
+    if(known)return known;
+    if(!(system.starCount>1))return null;
+  }
   const random = seeded(hashName(`${system.host}:companion`));
-  if (random() > 0.34) return null;
-  const close = random() < 0.4;
+  if (system.generated && random() > 0.34) return null;
+  const close = system.generated && random() < 0.4;
   const whiteDwarf = random() < 0.12;
   const radiusA = system.radiusSol || 1;
   const teffB = whiteDwarf ? 9000 + random() * 16000 : clamp(teff * (0.5 + random() * 0.6), 2700, 32000);
@@ -467,6 +448,7 @@ function companionFor(system, teff) {
   const luminositySol = radiusSol ** 2 * (teffB / 5772) ** 4;
   const info = {
     close,
+    modeled: !system.generated,
     whiteDwarf,
     teff: teffB,
     radiusSol,
@@ -495,6 +477,11 @@ function companionFor(system, teff) {
  * `twin` is the second star of a distant pair, drawn beside the first.
  */
 const KNOWN_COMPANIONS = {
+  // NASA: https://imagine.gsfc.nasa.gov/features/cosmic/nearest_star_info.html
+  // ESO: https://www.eso.org/public/announcements/ann16089/
+  // Approximate visual stellar parameters; orbital phase is illustrative.
+  'Proxima Cen': { name:'Alpha Centauri A', teff:5800, radiusSol:1.2, massSol:1.1, separationAu:13000,
+    twin:{name:'Alpha Centauri B',teff:5200,radiusSol:.86,offsetAu:23} },
   // GJ 667 A and B, a K3 and K5 pair 12 AU apart, some 230 AU from C.
   'GJ 667 C': { teff: 4600, radiusSol: 0.76, massSol: 0.73, separationAu: 230, twin: { teff: 4400, radiusSol: 0.7, offsetAu: 12 } },
 };
@@ -509,7 +496,11 @@ function starFor(teff, radiusSol, seedName) {
 }
 
 function knownCompanion(system) {
-  const known = KNOWN_COMPANIONS[system.host];
+  const peer=system.companionRecords?.[0];
+  const known = KNOWN_COMPANIONS[system.host] ?? (peer ? {
+    name:peer.host,teff:peer.teff??5000,radiusSol:peer.radiusSol??.8,massSol:peer.massSol??.8,
+    separationAu:Math.max(1,hostPosition(system).distanceTo(hostPosition(peer))/AU_KM),
+  }:null);
   if (!known) return null;
   const random = seeded(hashName(`${system.host}:companion`));
   const star = starFor(known.teff, known.radiusSol, `${system.host}:A`);
@@ -525,6 +516,7 @@ function knownCompanion(system) {
   };
   system.companionInfo = info;
   const twin = known.twin && {
+    name:known.twin.name,
     star: starFor(known.twin.teff, known.twin.radiusSol, `${system.host}:twin`),
     offsetKm: known.twin.offsetAu * AU_KM,
     luminositySol: known.twin.radiusSol ** 2 * (known.twin.teff / 5772) ** 4,
@@ -533,6 +525,7 @@ function knownCompanion(system) {
   };
   return {
     ...info,
+    name:known.name,
     star,
     twin,
     separationKm: known.separationAu * AU_KM,

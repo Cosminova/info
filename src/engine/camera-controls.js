@@ -791,9 +791,10 @@ export class OrbitApproachControls {
   stopRoam() {
     if (this.mode !== 'roam') return;
     this.mode = 'orbit';
-    const dx = this.worldPosition.x - this.targetPosition.x;
-    const dy = this.worldPosition.y - this.targetPosition.y;
-    const dz = this.worldPosition.z - this.targetPosition.z;
+    const local=this.originKey===this.targetKey;
+    const dx = local ? this.originOffset.x : this.worldPosition.x-this.targetPosition.x;
+    const dy = local ? this.originOffset.y : this.worldPosition.y-this.targetPosition.y;
+    const dz = local ? this.originOffset.z : this.worldPosition.z-this.targetPosition.z;
     const dist = Math.hypot(dx, dy, dz) || 1;
     this.distanceRadii = clamp(
       dist / Math.max(this.targetRadius, 1e-6),
@@ -1437,14 +1438,16 @@ export class OrbitApproachControls {
       // Onto the offset from the anchor, not onto the absolute position, so a
       // small step stays a small step however far from the origin we are.
       this.roamOffset.addScaledVector(velocity, dt);
+      this.originOffset.copy(this.roamOffset);
       this.worldPosition.copy(this.roamOriginPosition).add(this.roamOffset);
     } else {
-      this.worldPosition.addScaledVector(velocity, dt);
+      this.originOffset.addScaledVector(velocity, dt);
+      this.worldPosition.copy(this.targetPosition).add(this.originOffset);
     }
 
-    const dx = this.worldPosition.x - this.targetPosition.x;
-    const dy = this.worldPosition.y - this.targetPosition.y;
-    const dz = this.worldPosition.z - this.targetPosition.z;
+    const dx = this.mode==='roam' ? this.worldPosition.x-this.targetPosition.x : this.originOffset.x;
+    const dy = this.mode==='roam' ? this.worldPosition.y-this.targetPosition.y : this.originOffset.y;
+    const dz = this.mode==='roam' ? this.worldPosition.z-this.targetPosition.z : this.originOffset.z;
     const dist = Math.hypot(dx, dy, dz);
     // Roaming, the distance to the target is a readout and nothing else: it is
     // not what put the camera where it is, so clamping it would silently move
@@ -1455,7 +1458,7 @@ export class OrbitApproachControls {
       return;
     }
     this.distanceRadii = clamp(dist / Math.max(this.targetRadius, 1e-6), this.minDistanceRadii, this.maxDistanceRadii);
-    this.pitch = Math.asin(clamp(dy / dist, -1, 1));
+    this.pitch = Math.asin(clamp(dy / Math.max(dist,1e-9), -1, 1));
     this.yaw = Math.atan2(dx, dz);
   }
 

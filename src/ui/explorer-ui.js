@@ -1102,41 +1102,41 @@ export function createExplorerUI(config) {
     // its host the same way a moon names its planet, so arriving at one of those
     // shows the star and its siblings without this needing to know the
     // difference.
-    const rootKey = spec?.parent && spec.parent !== 'sun' ? spec.parent : resolved.key;
-    const rootResolved = resolveWorld(rootKey);
-    const satellites = hooks.satellitesOf(rootKey);
-    const signature = `${rootKey}|${state.target}|${satellites.length}`;
-
-    reconcile(systemTree, signature, () => {
-      if (!rootResolved) return [el('p', { class: 'obj-empty', text: 'No system here.' })];
-      const rows = [el('button', {
-        type: 'button',
-        class: `btn is-quiet tree-root${state.target === rootKey ? ' is-active' : ''}`,
-        text: rootResolved.name,
-        onClick: () => hooks.selectTarget(rootKey, { fly: true }),
-      })];
-      if (!satellites.length) {
-        // Worded for what is being looked at. "No known satellites" is right at
-        // Mercury and wrong at a star, where the question was what orbits it.
-        const empty = rootResolved.kind === 'star' || rootResolved.kind === 'black-hole'
-          ? 'Nothing known in orbit.'
-          : 'No known satellites.';
-        rows.push(el('p', { class: 'obj-empty', text: empty }));
-        return rows;
-      }
-      rows.push(el('div', { class: 'tree-kids' }, satellites.slice(0, 40).map((moon) =>
-        el('button', {
-          type: 'button',
-          class: `btn is-quiet tree-kid${state.target === moon.key ? ' is-active' : ''}`,
-          onClick: () => hooks.selectTarget(moon.key, { fly: true }),
-        }, [
-          el('span', { class: 'tree-name', text: moon.name }),
-          // A radius is the useful number for a moon and a useless one for a
-          // star, so a row is allowed to bring its own: how far out it orbits,
-          // or how many planets it has. See membersOf in space.js.
-          el('span', { class: 'tree-size', text: moon.note ?? `${Math.round(moon.radiusKm)} km` }),
-        ]))));
-      return rows;
+    let rootKey=resolved.key, rootResolved=resolved;
+    const ancestors=new Set();
+    for(let i=0;i<4;i++){
+      const parent=rootResolved?.spec?.parent ?? (rootResolved?.dest?.system?.hole ? `bh:${rootResolved.dest.system.hole}` : null);
+      if(!parent||ancestors.has(parent))break;
+      const next=resolveWorld(parent);if(!next)break;
+      ancestors.add(rootKey);rootKey=parent;rootResolved=next;
+    }
+    const collect=(key,seen=new Set(),depth=0)=>{
+      if(depth>3||seen.has(key))return [];
+      const next=new Set(seen).add(key);
+      return hooks.satellitesOf(key).map(row=>({...row,children:collect(row.key,next,depth+1)}));
+    };
+    const members=collect(rootKey);
+    const signature=JSON.stringify([rootKey,state.target,members]);
+    reconcile(systemTree,signature,()=>{
+      const preview=(row)=>{
+        const obj=resolveWorld(row.key),kind=obj?.kind ?? (row.note?.includes('star')?'star':'body');
+        const palette=obj?.spec?.palette;
+        const rgb=palette?.[0]??(kind==='star'?[1,.75,.35]:[.4,.5,.6]);
+        const tint=`rgb(${rgb.map(c=>Math.round(c*255)).join(',')})`;
+        const icon=el('span',{class:`system-preview-orb ${kind}`,'aria-hidden':'true'});
+        icon.style.setProperty('--body-tint',tint);
+        return el('button',{type:'button',class:'system-preview-item',title:row.name,onClick:()=>hooks.selectTarget(row.key,{fly:true})},[icon,el('span',{text:row.name})]);
+      };
+      const render=(row,depth=0)=>el('div',{class:'system-branch'},[
+        el('button',{type:'button',class:`btn is-quiet tree-kid${state.target===row.key?' is-active':''}`,onClick:()=>hooks.selectTarget(row.key,{fly:true})},[
+          el('span',{class:'tree-name',text:row.name}),el('span',{class:'tree-size',text:row.note??`${Math.round(row.radiusKm)} km`})]),
+        ...(row.children?.length?[el('div',{class:'tree-kids'},row.children.map(child=>render(child,depth+1)))]:[])
+      ]);
+      const root={key:rootKey,name:rootResolved.name,radiusKm:rootResolved.radius,children:members};
+      const previews=[root,...members.flatMap(row=>[row,...row.children])].slice(0,30);
+      return [el('details',{class:'system-previews',open:true},[
+        el('summary',{text:'System preview'}),
+        el('div',{class:'system-preview-strip'},previews.map(preview))]),render(root)];
     });
   }
 

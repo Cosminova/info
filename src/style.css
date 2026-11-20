@@ -745,3 +745,12 @@ html.is-touch .quick-list {
     animation: none;
   }
 }
+
+/* Lightweight system thumbnails share the body's palette; no extra WebGL scenes. */
+.system-preview-strip{display:flex;gap:10px;overflow-x:auto;padding:12px 4px}
+.system-preview-item{flex:0 0 76px;display:grid;justify-items:center;gap:7px;background:none;border:0;color:inherit;font:inherit;font-size:11px;cursor:pointer}
+.system-preview-orb{display:block;width:40px;height:40px;border-radius:50%;background:radial-gradient(circle at 28% 25%,#ffffff88,var(--body-tint) 35%,#02050a 85%);box-shadow:inset -7px -3px 9px #0008}
+.system-preview-orb.star{background:radial-gradient(circle,#fff 15%,var(--body-tint) 65%,#ffc56b77);box-shadow:0 0 12px #ffc97a99}
+.system-preview-orb.black-hole{background:#000;border:3px solid #f5b96c;box-shadow:0 0 9px #f5b96c88;transform:rotate(-25deg) scaleY(.65)}
+.system-previews summary{cursor:pointer;font-size:12px;color:#9eb6c9}
+.system-branch>.tree-kid{width:100%}

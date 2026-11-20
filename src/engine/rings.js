@@ -148,7 +148,7 @@ const FRAGMENT = /* glsl */ `
      * The previous model floored the illumination at 5%, which meant rings never
      * went dark with the Sun in their plane and never inverted when back-lit.
      */
-    float mu0 = max(abs(uSunDir.y), 0.0015);   // sine of the Sun's elevation
+    float mu0 = max(abs(uSunDir.y), max(uSunAngular * 0.5, 0.015));   // sine of the Sun's elevation
     float mu = max(abs(view.y), 0.0015);       // sine of the viewer's elevation
     float tau = opacity * uOpticalDepth;
     bool backlit = (uSunDir.y * view.y) < 0.0;
@@ -179,7 +179,10 @@ const FRAGMENT = /* glsl */ `
     // when back-lit — doing the work.
     float brightness = clamp(scattered * uAlbedo * 0.25 * uMultipleScattering, 0.0, 4.0);
 
-    vec3 colour = ring.rgb * uSunColour * uSunIntensity * brightness * shadow;
+    // Finite particle thickness and reflected planet light keep grazing rings
+    // readable without removing the planet's shadow or backlighting.
+    float planetshine = 0.035 * pow(uPlanetRadius / r, 2.0);
+    vec3 colour = ring.rgb * uSunColour * uSunIntensity * (brightness * shadow + planetshine);
 
     // Opacity as the viewer sees it: a grazing view looks through a longer path
     // and the rings go opaque.

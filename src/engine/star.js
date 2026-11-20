@@ -471,7 +471,9 @@ export class Star {
     this.mesh.visible = visibility > 0.002;
     this.corona.visible = this.mesh.visible;
 
-    const light = clamp(brightness, 0, 4);
+    // Visible stellar meshes retain a faint optical response even when the
+    // exposure is set by a much brighter binary companion.
+    const light = Math.max(clamp(brightness, 0, 4), .025*visibility);
     // A sun a few dozen pixels across, the way a host star stands in its own
     // planet's sky, clips to white in any camera; drawn at surface brightness
     // it came out a grey disc. Close enough to fill the view it is a surface

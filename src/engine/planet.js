@@ -311,6 +311,7 @@ const RELIEF_GLSL = /* glsl */ `
   uniform float uVolcanoDensity;
   uniform float uDebugGeology;
   uniform vec3 uExoMountains;
+  float gExoHeightDelta=0.0;
   uniform float uErosion;          // km
   uniform float uErosionFreq;      // per radius
   uniform float uErosionOctaves;   // finest kept, from the precision of a direction
@@ -501,6 +502,7 @@ const RELIEF_GLSL = /* glsl */ `
       float frequency=uExoMountains.y;
       vec3 seed=vec3(mod(uSurfaceSeed*.73,47.0),mod(uSurfaceSeed*.39,53.0),19.2);
       vec4 range=testLandform(d*frequency+seed,pixelAngle*frequency);
+      gExoHeightDelta=(gLandFiltered*gLandFiltered-range.x*range.x)*uExoMountains.x;
       t+=vec4(range.x*range.x*uExoMountains.x,
         range.yzw*(2.0*range.x*uExoMountains.x*frequency));
     }
@@ -1001,7 +1003,10 @@ uniform float uWaveTime;
    * are stretched into noise.
    */
   vec3 sampleColourMap(vec3 dir, vec2 uv) {
-    vec2 clamped = vec2(uv.x, clamp(uv.y, 0.06, 0.94));
+    // Do not stretch the 79-degree parallel over the polar cap. Measured
+    // maps already contain the poles; clamp only to their texel centres.
+    float halfTexel = 0.5 / float(textureSize(uColourMap, 0).y);
+    vec2 clamped = vec2(uv.x, clamp(uv.y, halfTexel, 1.0-halfTexel));
     vec3 albedo = wrapTexture(uColourMap, clamped).rgb;
     if (uPolarSmooth < 0.01) return albedo;
     float pole = smoothstep(0.55, 0.80, abs(dir.y));
@@ -1139,6 +1144,29 @@ uniform float uWaveTime;
       float strata=fbmd(p*9.0+37.2,octaves,2.09,.55).x;
       colour*=.85+strata*.5;
       colour=mix(colour,uPaletteC*.8,smoothstep(.03,.28,strata)*.25);
+    }
+    if(uExoMountains.z>0.5){
+      // Each geology has its own material pattern, not the same mottling
+      // recoloured. Sample in spherical coordinates so there are no UV poles.
+      float kind=uExoMountains.z;
+      // Reuse the seeded province fields instead of evaluating six additional
+      // noise octaves per pixel. Their frequency already varies per world.
+      float broad=province*2.0-1.0;
+      float veins=mottle*2.0-1.0;
+      // Keep the planet's unique mineral palette. Hard-coded family colours
+      // here used to erase all the variation supplied by the catalogue seed.
+      float weathering=smoothstep(-.5,.5,broad);
+      if(kind<1.5)weathering=smoothstep(-.4,.4,broad+.35*veins);
+      else if(kind<2.5)weathering=smoothstep(-.35,.45,broad-.2*veins);
+      else if(kind<3.5){
+        // Broken sedimentary provinces, not latitude stripes like a gas giant.
+        weathering=smoothstep(-.45,.5,broad+veins*.65);
+      }else if(kind<4.5)weathering=smoothstep(-.4,.55,veins+broad*.4);
+      else if(kind>5.5)weathering=smoothstep(-.45,.25,broad);
+      vec3 minerals=mix(uPaletteB,uPaletteA,weathering);
+      minerals=mix(minerals,uPaletteC,smoothstep(-.05,.65,veins)*.45);
+      colour=mix(colour,minerals,.75)*(.92+.12*veins);
+
     }
     return colour;
   }
@@ -1309,12 +1337,19 @@ uniform float uWaveTime;
       normal = normalize(mix(normal,dir,smoothstep(.0002,.003,pixelAngle)));
     }
 
+    if(uExoMountains.x>0.0){
+      groundKm+=gExoHeightDelta*smoothstep(.00008,.0008,pixelAngle);
+      normal=normalize(mix(normal,dir,smoothstep(.0002,.003,pixelAngle)));
+    }
     // How far under water this point is, and how much of the sea's own character
     // it should take on. Shallow water keeps the colour of what is below it,
     // which is what draws the shelf around a coastline; deep water does not.
     float depthKm = uSeaLevelKm > 0.0 ? uSeaLevelKm - groundKm : -1.0;
+    // Integrate the coastline over the screen pixel instead of thresholding
+    // unresolved relief into a field of single-pixel islands.
+    float shoreWidth=max(max(uSeaLevelKm*.012,.02),fwidth(depthKm));
     float wet = uSeaLevelKm > 0.0
-      ? smoothstep(0.0, max(uSeaLevelKm * 0.012, 0.02), depthKm)
+      ? smoothstep(-shoreWidth*.5, shoreWidth, depthKm)
       : 0.0;
     if (wet > 0.0) {
       // Water is flat. Taking the sphere normal back over the seabed's is what
@@ -1366,7 +1401,7 @@ uniform float uWaveTime;
       float mapTexel = 6.2831853 / float(textureSize(uColourMap, 0).x);
       float own = uOwnTexture * smoothstep(1.5, 0.3, pixelAngle / mapTexel);
       if (own > 0.0) {
-        vec3 broad = textureLod(uColourMap, vec2(uv.x, clamp(uv.y, 0.06, 0.94)), 6.0).rgb * uAlbedoBoost;
+        vec3 broad = textureLod(uColourMap, vec2(uv.x, clamp(uv.y, 0.0001, 0.9999)), 6.0).rgb * uAlbedoBoost;
         float freq = uErosionFreq * 0.7;
         int octaves = int(clamp(log2(0.5 / max(pixelAngle * freq, 1e-12)), 1.0, 9.0));
         float mottle = fbmd(dir * freq + 31.0, octaves, 2.03, 0.6).x;

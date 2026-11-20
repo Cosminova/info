@@ -1,3 +1,5 @@
+import { exoCharacter, naturalPalette } from './engine/exo-appearance.js';
+import { sphereEntry } from './engine/swept-surface.js';
 import { TEST_SITES, siteDirection } from './engine/test-world.js';
 import { createTestWorldGuide } from './engine/test-world-guide.js';
 import { WalkSupport } from './engine/walk-support.js';
@@ -208,6 +210,10 @@ scene.add(sun.group);
 
 const planets = new Map();
 function moonSpec(spec) {
+  if (MOONS.some(m=>m.key===spec.key)) {
+    const c=exoCharacter(spec.name,{radiusKm:spec.radiusKm,temperatureK:150,oceanLevel:0,volatiles:'airless',gaseous:false});
+    spec={...spec,exoMountains:c.mountains,landscapeKind:c.kind,naturalSurface:true,palette:naturalPalette(c.palette),geology:{...(spec.geology??{}),...c.geology},craterOctaves:Math.min(spec.craterOctaves??5,4)};
+  }
   if (spec.radiusKm >= 400) return spec;
   return {
     ...spec,
@@ -215,7 +221,7 @@ function moonSpec(spec) {
     maxLevel: 16,
     patchResolution: spec.radiusKm < 40 ? 20 : 24,
     pixelsPerQuad: 4.5,
-    craterOctaves: Math.max(spec.craterOctaves ?? 5, spec.radiusKm < 80 ? 7 : spec.craterOctaves ?? 5),
+    craterOctaves: Math.min(spec.craterOctaves ?? 4, 4),
     roughness: Math.max(spec.roughness ?? 0.08, spec.radiusKm < 80 ? 0.16 : spec.roughness ?? 0.08),
   };
 }
@@ -742,6 +748,7 @@ for (const [stem, stars] of components) {
     // Filed under the pair rather than under the catalogue at large, which is
     // the same rule the invented stars follow: a star belongs to its system.
     star.group = stem;
+    star.system.companionRecords=stars.filter(other=>other!==star).map(other=>other.system);
     star.companions = stars.filter((other) => other !== star).map((other) => other.key);
   }
 }
@@ -919,6 +926,8 @@ function resolveWorld(key) {
     return { key, name: body.spec.name, position: body.position, radius: body.spec.radiusKm, kind: 'body', spec: body.spec };
   }
   if (exoSystem) {
+    const companion=exoSystem.get(key);
+    if(companion?.star)return {key,name:companion.spec.name,position:companion.position,radius:companion.spec.radiusKm,kind:'star',spec:companion.spec};
     if (key === exoSystem.key) {
       return { key, name: exoSystem.system.host, position: exoSystem.position, radius: exoSystem.star.radius, kind: 'star', dest: destByKey.get(key) };
     }
@@ -1315,6 +1324,7 @@ function ensureStarMesh(resolved) {
   if (resolved.kind !== 'star' || resolved.key === 'sun') return;
   if (starMeshes.has(resolved.key)) return starMeshes.get(resolved.key);
   if (exoSystem?.key === resolved.key) return exoSystem.star;
+  if(exoSystem?.get(resolved.key)?.star)return exoSystem.get(resolved.key).star;
   const { colour, intensity, look } = starProfile(resolved.dest);
   const star = new Star({ radiusKm: resolved.radius, colour, intensity, look });
   star.group.name = resolved.key;
@@ -1497,7 +1507,12 @@ function membersOf(key) {
     const planets = exoSystem.planets
       .map((item) => ({ key: item.spec.key, name: item.spec.name, radiusKm: item.spec.radiusKm }))
       .sort((a, b) => b.radiusKm - a.radiusKm);
-    return [...planets, ...companionsOf(dest)];
+    const liveNames=[exoSystem.companion?.name,exoSystem.companion?.twin?.name];
+    const companions = companionsOf(dest).filter(c=>!liveNames.includes(c.name));
+    for (const c of [exoSystem?.companion, exoSystem?.companion?.twin]) {
+      if (c && !companions.some(row => row.key === c.key)) companions.push({key:c.key,name:c.name ?? c.star?.group.name ?? 'Companion star',radiusKm:c.star.radius,note:'companion star'});
+    }
+    return [...planets, ...companions];
   }
   if (exoSystem) {
     // A planet of one: its moons, which are not destinations of their own but
@@ -1940,7 +1955,7 @@ function updateCameraFrame() {
     cameraFrame.key = null;
     return;
   }
-  cameraFrame.key = origin && bodyFrames.get(origin) ? origin : null;
+  cameraFrame.key = origin && (bodyFrames.get(origin) || destByKey.get(origin)?.kind==='star') ? origin : null;
   cameraFrame.offset.copy(controls.originOffset);
 }
 
@@ -2106,16 +2121,29 @@ function surfaceOf(key) {
 function groundUnder(key, point, now) {
   const surface = surfaceOf(key);
   if (!surface) return null;
-  const up = tmpShipUp.copy(point).sub(surface.position);
+  // Collision uses the same local frame as rendering, even billions of light years out.
+  const up = tmpShipUp;
+  const here = exoSystem?.localOf(controls.originKey);
+  const there = exoSystem?.localOf(key);
+  if (controls.originKey === key) up.copy(controls.originOffset);
+  else if (here && there) up.copy(controls.originOffset).add(here).sub(there);
+  else up.copy(point).sub(surface.position);
   const distance = up.length();
-  if (!(distance > 0) || distance > surface.radius * 1.25) return null;
-  up.multiplyScalar(1 / distance);
+  const uniforms=surface.planet.material.uniforms;
+  const axes=uniforms.uAxisScale.value;
+  if (distance > surface.radius * Math.max(axes.x,axes.y,axes.z) * 1.25) return null;
+  if(distance>1e-9)up.multiplyScalar(1/distance);
+  else up.set(0,1,0);
   const local = groundProbeDirs[0].copy(up).applyQuaternion(tmpBodyInverse.copy(surface.orientation).invert());
+  uniforms.uCameraLocal.value.copy(local).multiplyScalar(distance);
+  local.divide(uniforms.uAxisScale.value);
+  const radialScale=1/local.length();local.normalize();
+  const figureRadius=surface.radius*radialScale;
   const altitude = distance - surface.radius - cameraGround.km;
   const stale = cameraGround.key !== key
     || now - cameraGround.at > 120
     || cameraGround.dir.angleTo(local) * surface.radius > Math.max(altitude * 0.05, 0.001);
-  if (stale && surface.planet.group.visible) {
+  if (stale) {
     const uniforms = surface.planet.material.uniforms;
     const settle = (km) => {
       if (!Number.isFinite(km) || Math.abs(km) > surface.radius * 0.25) km = demGroundKm(key, local) ?? 0;
@@ -2126,18 +2154,14 @@ function groundUnder(key, point, now) {
       cameraGround.key = key;
       cameraGround.km = km;
     };
-    // Only the first answer on a body is worth a stall; after that the floor
-    // can be a frame or two behind while the read is in flight.
-    const pending = cameraGround.key === key && renderer.readRenderTargetPixelsAsync
-      ? surface.planet.groundHeightsKmAsync(renderer, groundProbeDirs)
-      : null;
-    if (pending) pending.then((h) => { if (cameraGround.key === key) settle(h[0]); }, () => {});
-    else if (cameraGround.key !== key) settle(surface.planet.groundHeightsKm(renderer, groundProbeDirs)[0]);
+    // Probe only near a surface, caching stationary answers. A cached height
+    // from another direction cannot safely constrain this frame's position.
+    settle(surface.planet.groundHeightsKm(renderer, groundProbeDirs)[0]);
     cameraGround.at = now;
     cameraGround.dir.copy(local);
   }
   if (cameraGround.key !== key) return null;
-  return { up, distance, radius: surface.radius, groundKm: cameraGround.km };
+  return { up, distance, radius: figureRadius, groundKm: cameraGround.km*radialScale };
 }
 
 /**
@@ -2174,7 +2198,7 @@ function floorBeforeControls(resolved, now) {
   const ground = groundUnder(resolved.key, controls.worldPosition, now);
   if (!ground) return;
   const radius = resolved.radius;
-  const floor = (radius + ground.groundKm + GROUND_CLEARANCE_KM) / radius;
+  const floor = (ground.radius + ground.groundKm + GROUND_CLEARANCE_KM) / radius;
   controls.minDistanceRadii = Math.max(1.000001, floor);
   controls.groundFloor = true;
   if (controls.distanceRadii < controls.minDistanceRadii) controls.distanceRadii = controls.minDistanceRadii;
@@ -2287,8 +2311,57 @@ function horizonForCraft(resolved, now) {
   controls.horizon = { up: horizonUp, minSin: Math.min(minSin, 0.97) };
 }
 
+const collisionStart={key:null,offset:new Vector3(),world:new Vector3()};
+function sweepFlightSurfaces(){
+  if(!['roam','fly'].includes(controls.mode)&&!controls.flying)return;
+  const candidates=[...planets.keys(),...(exoSystem?.planets??[]).map(x=>x.spec.key),...(exoSystem?.moons??[]).map(x=>x.spec.key)];
+  let fraction=1,hit=null;
+  const start=new Vector3(),end=new Vector3(),shapeStart=new Vector3(),shapeEnd=new Vector3(),inverse=new Quaternion();
+  const relative=(out,key,offset,world,surface,bodyKey)=>{
+    if(key===bodyKey)return out.copy(offset);
+    const a=exoSystem?.localOf(key),b=exoSystem?.localOf(bodyKey);
+    return a&&b?out.copy(offset).add(a).sub(b):out.copy(world).sub(surface.position);
+  };
+  for(const key of candidates){
+    const surface=surfaceOf(key);if(!surface)continue;
+    relative(start,collisionStart.key,collisionStart.offset,collisionStart.world,surface,key);
+    relative(end,controls.originKey,controls.originOffset,controls.worldPosition,surface,key);
+    const axis=surface.planet.material.uniforms.uAxisScale.value;
+    inverse.copy(surface.orientation).invert();
+    shapeStart.copy(start).applyQuaternion(inverse).divide(axis);
+    shapeEnd.copy(end).applyQuaternion(inverse).divide(axis);
+    const t=sphereEntry(shapeStart,shapeEnd,surface.radius+GROUND_CLEARANCE_KM);
+    if(t!==null&&t<fraction){fraction=t;hit={key,surface,point:start.clone().lerp(end,Math.max(0,t-1e-7))};}
+  }
+  if(!hit)return;
+  if(controls.mode!=='roam')controls.startRoam();
+  controls.setRoamAnchor(hit.key,hit.surface.position);
+  controls.roamOffset.copy(hit.point);controls.originOffset.copy(hit.point);controls.originKey=hit.key;
+  controls.worldPosition.copy(hit.surface.position).add(hit.point);
+  roamNearest.key=hit.key;roamNearest.radius=hit.surface.radius;
+  controls._flyVelocity?.set(0,0,0);
+  if(ship.active){ship.velocity.set(0,0,0);ship.speed=0;}
+}
+
+function guardOtherSurfaces(now){
+  if(!['orbit','fly'].includes(controls.mode)||state.viewFromEarth||state.riding)return;
+  const keys=[...planets.keys(),...(exoSystem?.planets??[]).map(x=>x.spec.key),...(exoSystem?.moons??[]).map(x=>x.spec.key)];
+  for(const key of keys){
+    if(key===controls.originKey)continue;
+    const ground=groundUnder(key,controls.worldPosition,now);
+    if(!ground)continue;
+    const floor=ground.radius+ground.groundKm+GROUND_CLEARANCE_KM;
+    if(ground.distance>=floor)continue;
+    const surface=surfaceOf(key),offset=ground.up.clone().multiplyScalar(floor);
+    controls.startRoam();controls.setRoamAnchor(key,surface.position);
+    controls.roamOffset.copy(offset);controls.originOffset.copy(offset);controls.originKey=key;
+    controls.worldPosition.copy(surface.position).add(offset);controls._flyVelocity?.set(0,0,0);
+    break;
+  }
+}
+
 function floorAfterControls(now, resolved) {
-  if (controls.mode === 'orbit') {
+  if (controls.mode === 'orbit' || controls.mode === 'fly') {
     orbitFloorAfterControls(now, resolved);
     return;
   }
@@ -2323,14 +2396,13 @@ function floorAfterControls(now, resolved) {
  */
 function orbitFloorAfterControls(now, resolved) {
   if (!resolved || resolved.kind === 'galaxy' || resolved.kind === 'craft') return;
-  if (state.viewFromEarth || state.riding || controls.flying) return;
+  if (state.viewFromEarth || state.riding) return;
   const ground = groundUnder(resolved.key, controls.worldPosition, now);
   if (!ground) return;
   const floor = ground.radius + ground.groundKm + GROUND_CLEARANCE_KM;
   if (ground.distance >= floor) return;
-  const lifted = controls.distanceRadii * (floor / Math.max(ground.distance, 1e-9));
-  controls.distanceRadii = lifted;
-  controls.originOffset.multiplyScalar(floor / Math.max(ground.distance, 1e-9));
+  controls.distanceRadii = floor / Math.max(controls.targetRadius,1e-9);
+  controls.originOffset.copy(ground.up).multiplyScalar(floor);
   controls.worldPosition.copy(controls.targetPosition).add(controls.originOffset);
   cameraGround.altitudeKm = GROUND_CLEARANCE_KM;
 }
@@ -2386,8 +2458,13 @@ function updateRoamFrame() {
   }
   // Three hundred radii out a body is a couple of degrees wide and its orbital
   // motion is no longer yours to share.
-  if (bestKey && bestSurface < bestRadius * 300) controls.setRoamAnchor(bestKey, bestPos);
-  else controls.setRoamAnchor(starKey, starPos);
+  const anchorKey=bestKey && bestSurface<bestRadius*300 ? bestKey : starKey;
+  const anchorPos=anchorKey===bestKey ? bestPos : starPos;
+  // Rebase in local coordinates before setRoamAnchor's absolute fallback loses
+  // precision in distant galaxies.
+  const anchorOffset=anchorKey!==controls.roamOriginKey ? cameraLocalIn(anchorPos,anchorKey,tmpRoamLocal).clone() : null;
+  controls.setRoamAnchor(anchorKey,anchorPos);
+  if(anchorOffset)controls.roamOffset.copy(anchorOffset);
   // Roaming belongs to no one body: whatever you fly down to becomes the
   // selection, so its ground loads in detail and Walk lands on it, without the
   // camera being handed to it.
@@ -3235,6 +3312,9 @@ function frame(now) {
   floorBeforeControls(resolved, now);
 
   const earth = universe.get('earth');
+  collisionStart.key=controls.originKey;
+  collisionStart.offset.copy(controls.originOffset);
+  collisionStart.world.copy(controls.worldPosition);
   controls.update(
     dt,
     targetPos,
@@ -3259,7 +3339,9 @@ function frame(now) {
       : null,
   );
 
+  sweepFlightSurfaces();
   floorAfterControls(now, resolved);
+  guardOtherSurfaces(now);
   const cam = controls.worldPosition;
   updateCameraFrame();
   // Anything that took the camera out of roam — a flight, a mode button — has
@@ -3321,7 +3403,7 @@ function frame(now) {
     visibility: pointVisibility(1, sunDistance, 8.7 + 2.5 * Math.log10(Math.max(58 / Math.max(camera.fov, 1e-4), 1))),
     // The glare is how a star looks to someone standing in its light, not a
     // marker for one being flown to.
-    flare: !controls.flying,
+    flare: true,
   });
   considerUpgrade('sun', (SUN.radiusKm / sunDistance) * pixelsPerRadian * 2);
 
@@ -3564,7 +3646,7 @@ function frame(now) {
         exoReference,
         state.exposure,
       ),
-      flare: !controls.flying && state.target !== exoSystem.key,
+      flare: true,
     });
     // Always drawn. A host star seen from one of its own planets is the one
     // thing in that sky you cannot be without, and it is a point source out
@@ -3583,7 +3665,7 @@ function frame(now) {
         pixelsPerRadian,
         visibility: pointVisibility(companion.luminositySol, d, 8.7 + 2.5 * Math.log10(Math.max(58 / Math.max(camera.fov, 1e-4), 1))),
         brightness: exoSunIntensity(exoFlux(companion.luminositySol, d / 149597870.7), exoReference, state.exposure),
-        flare: !controls.flying,
+        flare: true,
       });
       companion.star.group.visible = true;
       const twin = companion.twin;
@@ -3599,7 +3681,7 @@ function frame(now) {
           pixelsPerRadian,
           visibility: pointVisibility(twin.luminositySol, dt, 8.7 + 2.5 * Math.log10(Math.max(58 / Math.max(camera.fov, 1e-4), 1))),
           brightness: exoSunIntensity(exoFlux(twin.luminositySol, dt / 149597870.7), exoReference, state.exposure),
-          flare: !controls.flying,
+          flare: true,
         });
         twin.star.group.visible = true;
       }
@@ -3638,6 +3720,8 @@ function frame(now) {
         u.uSunDir.value.copy(tmpSunLocal);
         u.uCameraLocal.value.copy(tmpCameraLocal);
         u.uSunIntensity.value = item.planet.material.uniforms.uSunIntensity.value;
+        u.uSunColour.value.copy(sunColour);
+        u.uSunAngular.value=Math.asin(Math.min(1,exoSystem.star.radius/Math.max(item.local.length(),1)));
         u.uPixelsPerRadian.value = pixelsPerRadian;
         item.rings.mesh.visible = state.showRings;
       }
@@ -3703,15 +3787,15 @@ function frame(now) {
 
   if (resolved?.kind === 'star' && resolved.key !== 'sun') {
     const mesh = ensureStarMesh(resolved);
-    if (mesh && exoSystem?.key !== resolved.key) {
-      placeRelative(mesh.group, resolved.position);
-      tmpCameraLocal.copy(cam).sub(resolved.position);
+    if (mesh && exoSystem?.key !== resolved.key && !exoSystem?.get(resolved.key)?.star) {
+      placeRelative(mesh.group, resolved.position,resolved.key);
+      cameraLocalIn(resolved.position,resolved.key,tmpCameraLocal);
       mesh.update({
         cameraLocal: tmpCameraLocal,
         time: now / 1000,
-        distanceKm: cam.distanceTo(resolved.position),
+        distanceKm: tmpCameraLocal.length(),
         pixelsPerRadian,
-        flare: false,
+        flare: true,
       });
     }
   }
@@ -4032,7 +4116,7 @@ window.cosminova = {
     controls.stopFlight();
     const item = exoSystem.get(key);
     if (!item) return null;
-    const toStar = new Vector3().subVectors(exoSystem.position, item.position).normalize();
+    const toStar = exoSystem.localOf(key)?.clone().negate().normalize() ?? new Vector3().subVectors(exoSystem.position, item.position).normalize();
     const axis = new Vector3(0, 1, 0);
     const direction = toStar
       .clone()
@@ -4301,7 +4385,9 @@ window.cosminova = {
     const home = universe.get(key);
     const body = home ? home.position : resolveWorld(key).position;
     const star = home ? universe.get('sun').position : exoSystem.position;
-    const toSun = new Vector3().subVectors(star, body).normalize();
+    const local=home?null:exoSystem?.localOf(key);
+    const toSun = local ? local.clone().negate().normalize() : new Vector3().subVectors(star, body).normalize();
+    if(toSun.lengthSq()<.001)toSun.set(0,0,1);
     const axis = new Vector3(0, 1, 0);
     const direction = toSun
       .clone()

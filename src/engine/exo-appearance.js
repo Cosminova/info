@@ -24,12 +24,25 @@ export function naturalPalette(palette) {
   });
 }
 
+// Independent mineral chemistry and weathering give each name a continuous
+// palette, rather than assigning every member of a family the same colours.
+function mineralPalette(name, base, mixing=1) {
+  const r=rng(hashName(`${name}:minerals-v1`));
+  const minerals=[[.57,.48,.34],[.34,.39,.42],[.53,.29,.16],[.22,.24,.23],[.73,.70,.61],[.36,.43,.39]];
+  const a=minerals[Math.floor(r()*minerals.length)], b=minerals[Math.floor(r()*minerals.length)];
+  const blend=r(), strength=(.25+r()*.6)*mixing, brightness=.65+r()*.65;
+  return naturalPalette(base.map((c,i)=>c.map((v,j)=>{
+    const tone=(a[j]*(1-blend)+b[j]*blend)*[1,.45,1.25,1.6][i];
+    return clamp((v*(1-strength)+tone*strength)*brightness,.015,.95);
+  })));
+}
+
 // Distinct geological/weather families, with continuous variation inside each.
 // These augment the existing seeded province generator rather than replacing it.
 export function exoCharacter(name, d) {
   const r=rng(hashName(`${name}:character-v1`));
   const pick=a=>a[Math.floor(r()*a.length)];
-  const size=clamp(d.radiusKm/6371,.35,1.8);
+  const size=clamp(d.radiusKm/6371,.00005,1.8);
   if(d.gaseous){
     const weather=pick(['banded','stormy','hazy','turbulent']);
     const palettes=d.temperatureK>700 ? [
@@ -41,7 +54,7 @@ export function exoCharacter(name, d) {
       [[.34,.52,.49],[.08,.19,.21],[.72,.77,.65],[.75,.8,.78]],
       [[.59,.46,.27],[.22,.18,.13],[.87,.78,.55],[.73,.71,.65]],
     ];
-    return {kind:weather,palette:pick(palettes),mountains:[0,1,0],
+    return {kind:weather,palette:mineralPalette(name,pick(palettes),.35),mountains:[0,1,0],
       weather:[['banded','stormy','hazy','turbulent'].indexOf(weather)+1,weather==='hazy'?1.2:2.8+r()*1.8,.18+r()*.16, r()*6.283],
       banding:weather==='banded'?3+r()*3:weather==='hazy'?.35+r()*.4:.8+r()*1.4};
   }
@@ -57,14 +70,15 @@ export function exoCharacter(name, d) {
     cratered:[[.39,.35,.29],[.20,.20,.20],[.57,.52,.43],[.7,.71,.7]],
     glacial:[[.56,.67,.70],[.20,.30,.35],[.72,.77,.76],[.87,.90,.90]],
   };
-  return {kind,palette:palettes[kind].map(c=>c.map(v=>v*(.88+r()*.2))),
-    mountains:[mountains[0]*size*(.8+r()*.4),mountains[1]*(.8+r()*.4),0],weather:[0,0,0,0],
-    oceanFraction:d.oceanLevel>0?(kind==='archipelago'?.76+r()*.16:.25+r()*.35):0,
+  return {kind,palette:mineralPalette(name,palettes[kind]),
+    mountains:[mountains[0]*size*(.35+r()*1.65),mountains[1]*(.4+r()*1.8),['alpine','archipelago','rifted','volcanic','cratered','glacial'].indexOf(kind)+1],weather:[0,0,0,0],
+    oceanFraction:d.oceanLevel>0&&(kind==='archipelago'||rng(hashName(`${name}:wet-v2`))()<.28)?(kind==='archipelago'?.65+r()*.25:.18+r()*.4):0,
     // Separate seed keeps weather choices from reshuffling the geography.
-    cloudCover:d.volatiles==='airless'||rng(hashName(`${name}:clouds-v1`))()<.4?0:kind==='volcanic'?.10:kind==='archipelago'?.28:.08+rng(hashName(`${name}:cloud-density-v1`))()*.24,
-    craterFactor:kind==='cratered'?1.7:.2,
-    geology:kind==='rifted'?{rift:{coverage:.35,frequency:2.5+r()*2,depth:8*size,width:.04+r()*.035}}:
-      kind==='volcanic'?{volcano:{coverage:.38,frequency:4+r()*3,height:16*size,density:.55},flood:{coverage:.28,fill:.7,wrinkle:.035,softness:.25}}:
+    cloudCover:d.volatiles==='airless'||rng(hashName(`${name}:clouds-v1`))()<.5?0:[.18,.45,.72,.92][Math.floor(rng(hashName(`${name}:cloud-density-v2`))()*4)],
+    cloudScale:1.1+rng(hashName(`${name}:cloud-scale-v2`))()**2*8,
+    craterFactor:kind==='cratered'?.65+r()*1.4:r()*.25,
+    geology:kind==='rifted'?{rift:{coverage:.35,frequency:1.2+r()*5,depth:(3+r()*10)*size,width:.04+r()*.035}}:
+      kind==='volcanic'?{volcano:{coverage:.38,frequency:4+r()*3,height:(5+r()*14)*size,density:.2+r()*.5},flood:{coverage:.28,fill:.7,wrinkle:.035,softness:.25}}:
       kind==='archipelago'?{volcano:{coverage:.22,frequency:7,height:7*size,density:.6}}:{},
   };
 }
