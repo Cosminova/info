@@ -22,7 +22,7 @@ try{
        const a=y*8+x,b=a+1,d=a+8,e=d+1;
        for(const [i,j,k]of [[a,b,e],[a,e,d]])if(ray.intersectTriangle(verts[i],verts[j],verts[k],false,hit))highest=Math.max(highest,hit.length()-radius);
      }
-     return {clearanceM:(c.walkGroundKm+c.walkEyeKm-highest)*1000,ground:c.walkGroundKm,meshGround:highest,level:tile.level,waiting:s.stats().collisionBlockedSteps};
+     return {clearanceM:((c._walkCameraHeight ?? (c.walkGroundKm+c.walkEyeKm))-highest)*1000,ground:c.walkGroundKm,meshGround:highest,level:tile.level,waiting:s.stats().collisionBlockedSteps};
    };
  });
  for(const biome of ['alpine','volcano','coast','desert']){
