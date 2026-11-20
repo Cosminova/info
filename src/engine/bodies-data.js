@@ -115,7 +115,7 @@ export const BODIES = [
     highlandSplit: 0.2,
     stones: 0,
     photometry: 1,
-    albedoBoost: 1.0,
+    albedoBoost: 1.18,
   },
   {
     key: 'mars',

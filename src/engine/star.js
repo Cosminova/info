@@ -131,11 +131,13 @@ const CORONA_VERTEX = /* glsl */ `
   #include <logdepthbuf_pars_vertex>
 
   uniform float uScale;
+  uniform float uLensOffset;
   varying vec2 vUv;
   void main() {
     vUv = position.xy;
     // View-space billboard so the corona always faces us.
     vec4 centre = modelViewMatrix * vec4(0.0, 0.0, 0.0, 1.0);
+    centre.z += uLensOffset;
     centre.xy += position.xy * uScale;
     gl_Position = projectionMatrix * centre;
 
@@ -263,18 +265,24 @@ const FLARE_FRAGMENT = /* glsl */ `
     float rays = pow(0.5 + 0.5 * sin(ang * 23.0 + 1.3), 10.0) * 0.6
       + pow(0.5 + 0.5 * sin(ang * 37.0 + 4.1), 14.0) * 0.5
       + pow(0.5 + 0.5 * sin(ang * 11.0 + 2.2), 8.0) * 0.45;
-    rays *= exp(-limb * 4.5) * edge;
+    rays *= exp(-limb * 2.8) * pow(1.0 - d, 1.3);
     // A long, thin horizontal streak through the core: screen-horizontal
     // whichever way the camera faces, since the quad is a view billboard.
     float streak = exp(-pow(vUv.y / (0.004 + 0.01 * abs(vUv.x)), 2.0)) * pow(max(1.0 - abs(vUv.x), 0.0), 2.2);
-    float ghost = exp(-pow((d - 0.62) / 0.05, 2.0)) * 0.02;
+    // Wavelength-separated lens halo, strongest across the horizontal axis.
+    // It is an optical artifact, never part of a planet's atmosphere/material.
+    vec3 ghost = vec3(exp(-pow((d-.62)/.09,2.0)),
+                      exp(-pow((d-.68)/.085,2.0)),
+                      exp(-pow((d-.73)/.085,2.0)));
+    ghost *= 0.045 * (0.2 + 0.8 * pow(abs(cos(ang-uAngle)),4.0));
+    float core = exp(-pow(d / 0.055, 2.0)) * 4.0 * (1.0-uResolved);
 
     // The halo is kept off a resolved disc so a close star keeps its surface;
     // the streak and rays are the lens, not the star, and stay however close.
     float off = mix(1.0, smoothstep(uDiscFraction * 0.85, uDiscFraction * 1.15, d), uResolved);
     vec3 tint = mix(uColour, vec3(1.0), 0.35 * exp(-d * 6.0));
-    float lens = (rays * 0.35 + streak * 0.7) * mix(1.0, 0.45, uResolved);
-    gl_FragColor = vec4(tint * uIntensity * (halo * off + lens + ghost * off), 1.0);
+    float lens = (rays * 0.38 + streak * 1.05) * mix(0.45, 1.0, uSpikes);
+    gl_FragColor = vec4(uIntensity * (tint * (halo * off + lens) + vec3(core) + ghost * off * mix(1.0,.3,uResolved)), 1.0);
   }
 `;
 
@@ -296,6 +304,23 @@ const clamp = (v, lo, hi) => (v < lo ? lo : v > hi ? hi : v);
  * @param brightness the light arriving at the camera, at the exposure the rest
  *   of the frame is drawn at. 1 is full sunlight at Earth.
  */
+// Visible fraction of a stellar disc behind a spherical foreground body.
+// Lens artifacts respond to the source as a whole, not the billboard's depth.
+export function lensTransmission(camera, star, starRadius, body, bodyRadius) {
+  const toStar=star.clone().sub(camera),toBody=body.clone().sub(camera);
+  const ds=toStar.length(),db=toBody.length();
+  if(db-bodyRadius>=ds || ds<=starRadius || db<=0)return 1;
+  const a=Math.asin(Math.min(starRadius/ds,1)),b=Math.asin(Math.min(bodyRadius/db,1));
+  const separation=Math.acos(Math.max(-1,Math.min(1,toStar.dot(toBody)/(ds*db))));
+  if(separation>=a+b)return 1;
+  if(separation<=Math.abs(b-a))return b>=a?0:1-b*b/(a*a);
+  const d=separation/a,r=b/a;
+  const x=Math.acos(Math.max(-1,Math.min(1,(d*d+1-r*r)/(2*d))));
+  const y=Math.acos(Math.max(-1,Math.min(1,(d*d+r*r-1)/(2*d*r))));
+  const area=x+r*r*y-.5*Math.sqrt(Math.max(0,(-d+1+r)*(d+1-r)*(d-1+r)*(d+1+r)));
+  return Math.max(0,Math.min(1,1-area/Math.PI));
+}
+
 export function pointGlare(brightness) {
   const light = clamp(brightness, 0.03, 6);
   return {
@@ -356,6 +381,7 @@ export class Star {
     this.coronaReach = (surface.shell ?? 0) > 0 ? 7 : (surface.glow ?? 1) > 1.3 ? 3.5 : 1.6;
     this.coronaMaterial = new ShaderMaterial({
       uniforms: {
+        uLensOffset: { value: 0 },
         uColour: { value: new Color(...colour) },
         uIntensity: { value: this.baseCorona },
         uScale: { value: radiusKm * 3 },
@@ -379,6 +405,7 @@ export class Star {
         uColour: { value: new Color(...colour) },
         uIntensity: { value: 0 },
         uScale: { value: radiusKm * 6 },
+        uLensOffset: { value: radiusKm * 1.01 },
         uSpikes: { value: 1 },
         uResolved: { value: 0 },
         uAngle: { value: 0.26 },
@@ -407,7 +434,7 @@ export class Star {
    * @param brightness this star's light where the camera is, at the exposure
    *   the rest of the frame is being drawn at. 1 is full sunlight at Earth.
    */
-  update({ cameraLocal, time, distanceKm, pixelsPerRadian = 0, brightness = 1, visibility = 1, flare = true }) {
+  update({ cameraLocal, time, distanceKm, pixelsPerRadian = 0, brightness = 1, visibility = 1, flare = true, lensTransmission = 1 }) {
     this.material.uniforms.uCameraLocal.value.copy(cameraLocal);
     this.material.uniforms.uTime.value = time;
     // The corona is sized in world units, so it has to grow with distance to
@@ -449,17 +476,17 @@ export class Star {
     const discRadius = discPixels / 2;
     const blowout = 1 + 1.2 * (1 - clamp((discRadius - 15) / 120, 0, 1)) * clamp(light, 0, 1);
     this.material.uniforms.uIntensity.value = this.baseIntensity * blowout;
-    this.flare.visible = flare && this.mesh.visible && pixelsPerRadian > 0 && light > 0.002;
+    this.flare.visible = flare && this.mesh.visible && pixelsPerRadian > 0 && light > 0.002 && lensTransmission > 0.001;
     if (this.flare.visible) {
       const discRadiusPx = discPixels / 2;
-      const flarePx = Math.max(70 + 230 * Math.log10(1 + light * 4), discRadiusPx * 2.4);
+      const flarePx = Math.max(110 + 400 * Math.log10(1 + light * 4), discRadiusPx * 2.4);
       const flareScale = (flarePx * distanceKm) / pixelsPerRadian;
       const f = this.flareMaterial.uniforms;
       f.uScale.value = flareScale;
       f.uDiscFraction.value = clamp(this.radius / flareScale, 0, 0.9);
       f.uSpikes.value = 1 - clamp((discRadiusPx - 4) / 30, 0, 1);
       f.uResolved.value = clamp((discRadiusPx - 14) / 30, 0, 1);
-      f.uIntensity.value = 0.55 * Math.pow(light, 0.6) * visibility;
+      f.uIntensity.value = 0.85 * Math.pow(light, 0.6) * visibility * lensTransmission;
     }
   }
 }

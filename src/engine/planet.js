@@ -1405,8 +1405,11 @@ uniform float uWaveTime;
     float lit = NdotL * sunVis;
 
     float lambert = lit;
-    float lommel = lit / max(lit + mu, 0.03) * 2.0;
-    float shade = mix(lambert, lommel * mu, uPhotometry);
+    // Lunar-Lambert radiance: do not multiply by the viewing cosine again.
+    // That extra factor incorrectly darkened rocky limbs into shaded spheres.
+    // Apply eclipse visibility after reflectance so occultation remains linear.
+    float lommel = 2.0 * NdotL / max(NdotL + mu, 0.03) * sunVis;
+    float shade = mix(lambert, lommel, uPhotometry);
     // Without air nothing scatters light into a shadow, so on an airless world
     // it is black but for what the sky fill and planetshine add back.
     shade *= 1.0 - craterShadow * (uAtmosphereDensity > 0.0 ? 0.88 : 0.97) * sunVis;

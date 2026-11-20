@@ -41,7 +41,7 @@ import { BODIES, BODY_BY_KEY, SUN } from './engine/bodies-data.js';
 import { MOONS, MOON_BY_KEY } from './engine/moons-data.js';
 import { Universe } from './engine/universe.js';
 import { Planet } from './engine/planet.js';
-import { Star, pointVisibility } from './engine/star.js';
+import { Star, pointVisibility, lensTransmission } from './engine/star.js';
 import { createRings } from './engine/rings.js';
 import { physicalFor } from './engine/physical-data.js';
 import {
@@ -2005,6 +2005,11 @@ function addExoDot(body, distanceKm, hostLum, fromStarKm) {
  * ordering survives — from a given vantage the worlds further in are still
  * brighter — but the level lands where the tone mapper can show detail.
  */
+function targetLensTransmission(starPosition, starRadius, cameraPosition) {
+  const target = surfaceOf(state.target);
+  return target ? lensTransmission(cameraPosition, starPosition, starRadius, target.position, target.radius) : 1;
+}
+
 function exoSunIntensity(flux, referenceFlux, exposure) {
   const relative = flux / Math.max(referenceFlux, 1e-9);
   // A knee rather than a clamp above the adapted level, so a world well inside
@@ -3299,6 +3304,8 @@ function frame(now) {
   sun.group.quaternion.copy(sunState.orientation);
   const sunDistance = cam.distanceTo(sunState.position);
   tmpCameraLocal.copy(cam).sub(sunState.position).applyQuaternion(tmpQuaternionInverse(sunState.orientation));
+  const solarLensExposure = state.target === 'sun'
+    ? state.exposure * clamp((sunDistance / SUN.radiusKm - 20) / 100, 0, 1) : 0;
   sun.update({
     cameraLocal: tmpCameraLocal,
     time: now / 1000,
@@ -3306,7 +3313,8 @@ function frame(now) {
     pixelsPerRadian,
     // Sunlight where the camera is, at the exposure everything else is being
     // drawn at, which is what decides how a Sun too small to resolve is drawn.
-    brightness: exposureScale / Math.max((sunDistance / 149597870.7) ** 2, 1e-6),
+    brightness: Math.max(exposureScale, solarLensExposure) / Math.max((sunDistance / 149597870.7) ** 2, 1e-6),
+    lensTransmission: targetLensTransmission(sunState.position, SUN.radiusKm, cam),
     // An ordinary star from far enough away: fifteenth magnitude from a
     // kiloparsec, where it had been a blazing point out to the edge of the
     // universe.
@@ -3545,6 +3553,7 @@ function frame(now) {
     const hostLum = exoSystem.luminositySol ?? 1;
     const exoReference = exoReferenceFlux(exoSystem, state.target, hostLum, cam);
     exoSystem.star.update({
+      lensTransmission: targetLensTransmission(exoSystem.position, exoSystem.star.radius, cam),
       cameraLocal: tmpCameraLocal,
       time: now / 1000,
       distanceKm: hostDist,
@@ -3567,6 +3576,7 @@ function frame(now) {
       tmpCameraLocal.copy(companion.star.group.position).negate();
       const d = tmpCameraLocal.length();
       companion.star.update({
+        lensTransmission: targetLensTransmission(companion.world, companion.star.radius, cam),
         cameraLocal: tmpCameraLocal,
         time: now / 1000,
         distanceKm: d,
@@ -3582,6 +3592,7 @@ function frame(now) {
         tmpCameraLocal.copy(twin.star.group.position).negate();
         const dt = tmpCameraLocal.length();
         twin.star.update({
+          lensTransmission: targetLensTransmission(twin.world, twin.star.radius, cam),
           cameraLocal: tmpCameraLocal,
           time: now / 1000,
           distanceKm: dt,
@@ -3739,7 +3750,23 @@ function frame(now) {
   // Under a lit sky the stars are there but drowned: the eye sets itself for
   // the daylight and they fall below it. Faded by the air the camera is in.
   const daylight = surfaceOf(resolved?.key)?.planet.daylight || 0;
-  const starsLeft = clamp(1 - 1.12 * daylight, 0, 1);
+  let starsLeft = clamp(1 - 1.12 * daylight, 0, 1);
+  // A camera exposed for a large sunlit planet cannot also expose faint stars.
+  // Keep the astronomical sky when the body is small, dark or off-centre.
+  const photoSurface = surfaceOf(resolved?.key)?.planet;
+  if (photoSurface) {
+    const pu = photoSurface.material.uniforms;
+    const eye = pu.uCameraLocal.value;
+    const sunElevation = eye.dot(pu.uSunDir.value) / Math.max(eye.length(), 1e-9);
+    const phase = eye.length() < photoSurface.radius * 1.015
+      ? clamp((sunElevation + 0.03) / 0.15, 0, 1)
+      : clamp(0.5 + 0.5 * sunElevation, 0, 1);
+    const radiusOnScreen = photoSurface.radius / Math.max(eye.length(), photoSurface.radius) * pixelsPerRadian / Math.max(height, 1);
+    const framing = clamp((radiusOnScreen - 0.06) / 0.16, 0, 1);
+    const litExposure = clamp((phase - 0.015) / 0.15, 0, 1) * clamp(pu.uSunIntensity.value, 0, 1);
+    const lookingAtBody = Math.max(0, Math.cos(controls.lookYaw) * Math.cos(controls.lookPitch));
+    starsLeft *= 1 - framing * framing * (3 - 2 * framing) * litExposure * lookingAtBody;
+  }
   // Under a closed deck the sun's disc is gone too; its light still arrives,
   // diffused, through the sky shader.
   const groundPlanet = surfaceOf(resolved?.key)?.planet ?? null;
