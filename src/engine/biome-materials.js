@@ -39,7 +39,9 @@ export const BIOME_MATERIAL_GLSL=/*glsl*/`
     vec2 n=living?packed.xy:packed.zw;
     vec3 slope=transpose(uMapBasis)*vec3(-n/max(sqrt(max(1.0-dot(n,n),.1)),.4),0.0);
     slope-=terrainNormal*dot(slope,terrainNormal);
-    normal=normalize(mix(normal,normalize(terrainNormal-slope*.12),weight));
+    normal=normalize(mix(normal,normalize(terrainNormal-slope*.025),weight));
+    // Retain fine colour variation without deep-looking baked crevices.
+    tex=mix(albedo,tex,.45);
     albedo=mix(albedo,tex,weight);
     shade=mix(shade,1.0,weight);
   }

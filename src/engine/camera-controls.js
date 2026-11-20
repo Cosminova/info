@@ -1,5 +1,6 @@
 import { Quaternion, Vector2, Vector3 } from 'three';
 import { platform } from './platform.js';
+import { smoothWalkHeight } from './walk-camera-height.js';
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const smoothstep = (lo, hi, v) => {
@@ -631,6 +632,7 @@ export class OrbitApproachControls {
     if (up.lengthSq() < 1e-18) up.set(0, 1, 0);
     up.normalize();
     this.walkGroundEpoch = (this.walkGroundEpoch ?? 0) + 1;
+    this._walkCameraHeight = NaN;
     const heading = this.walkHeadingLocal.copy(this._forward);
     const along = heading.dot(up);
     heading.addScaledVector(up, -along);
@@ -1329,11 +1331,12 @@ export class OrbitApproachControls {
       }
       headingL.addScaledVector(upL, -headingL.dot(upL)).normalize();
     }
-    return this._walkView();
+    return this._walkView(dt);
   }
 
   /** The eye and view direction for where the walker is standing now. */
-  _walkView() {
+  _walkView(dt = 0) {
+    this._walkCameraHeight = smoothWalkHeight(this._walkCameraHeight, this.walkGroundKm, this.walkEyeKm, dt);
     const upL = this.walkLocal;
     const headingL = this.walkHeadingLocal;
     const up = this.groundUp.copy(upL);
@@ -1346,7 +1349,7 @@ export class OrbitApproachControls {
     const eye = this._walkRight.copy(upL)
       .multiply(this.walkAxisScale)
       .multiplyScalar(this.targetRadius + this.walkGroundKm)
-      .addScaledVector(upL, this.walkEyeKm);
+      .addScaledVector(upL, this._walkCameraHeight - this.walkGroundKm);
     if (this.walkFrame) eye.applyQuaternion(this.walkFrame);
     const distanceKm = eye.length();
     this.distanceRadii = distanceKm / Math.max(this.targetRadius, 1e-6);

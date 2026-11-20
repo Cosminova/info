@@ -1291,6 +1291,7 @@ uniform float uWaveTime;
 
     if (uTestWorld > 0.5) {
       float softer = max(testRegion(dir,3)*0.25,max(testRegion(dir,2)*0.78, max(testRegion(dir,4)*0.65,testRegion(dir,1)*0.35)));
+      softer=max(softer,.9*(1.0-smoothstep(.04,.18,terrainSteep)));
       detailShade = mix(detailShade,1.0,softer);
       normal = normalize(mix(normal,terrainNormal,softer));
     }
